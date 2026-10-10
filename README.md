@@ -336,7 +336,9 @@ O `contrato-service` grava os eventos na tabela `contrato_event_outbox` na mesma
 |---|---|---|---:|---|
 | `freela.contrato.eventos.v1` | `contrato-service` | `notificacao-service`, `reputacao-service`, `auditoria-service` | 3 | `contratoId` |
 
-O particionamento por `contratoId` mantém os eventos de um mesmo contrato na mesma partição; instâncias concorrentes processam partições distintas. Os três consumidores usam grupos próprios, permitindo que cada serviço receba todos os eventos. Notificações são geradas para ambos os participantes em criação, conclusão e cancelamento, e para o cliente quando uma entrega é registrada. Reputação reage somente à conclusão. Auditoria registra todos os eventos.
+O particionamento por `contratoId` mantém os eventos de um mesmo contrato na mesma partição. O publicador da outbox lê os registros em ordem de criação e aguarda a confirmação de cada envio antes de enviar o próximo; o produtor também usa `acks=all` e idempotência habilitada. No consumo, Kafka atribui cada partição a somente um consumidor por grupo e o listener processa seus registros sincronamente, sem despacho assíncrono paralelo dentro da partição. Assim, a ordem é preservada para cada contrato, enquanto partições diferentes podem ser processadas em paralelo.
+
+O tópico tem três partições e cada serviço consumidor usa concorrência três por padrão (`KAFKA_CONSUMER_CONCURRENCY`). Isso permite até três consumidores ativos por grupo, em paralelo para partições diferentes; contratos distintos podem cair na mesma partição e então são processados em sequência. Não aumente o número de partições de um tópico já em uso sem planejar a migração: o mapeamento de uma chave pode mudar e registros antigos e novos do mesmo contrato podem ficar em partições diferentes. Os três consumidores usam grupos próprios, permitindo que cada serviço receba todos os eventos. Notificações são geradas para ambos os participantes em criação, conclusão e cancelamento, e para o cliente quando uma entrega é registrada. Reputação reage somente à conclusão. Auditoria registra todos os eventos.
 
 #### Contrato de mensagem
 

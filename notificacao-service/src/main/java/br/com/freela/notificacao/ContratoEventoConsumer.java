@@ -21,7 +21,8 @@ class ContratoEventoConsumer {
     }
 
     @KafkaListener(topics = "${app.kafka.topics.contrato-eventos}",
-            groupId = "${spring.kafka.consumer.group-id}", concurrency = "3")
+            groupId = "${spring.kafka.consumer.group-id}",
+            concurrency = "${app.kafka.listener.concurrency}")
     public void receber(String payload) throws IOException {
         JsonNode event = objectMapper.readTree(payload);
         UUID eventId = UUID.fromString(required(event, "eventId"));

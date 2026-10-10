@@ -23,6 +23,8 @@ spring:
       ack-mode: record
 app:
   kafka:
+    listener:
+      concurrency: ${KAFKA_CONSUMER_CONCURRENCY:3}
     topics:
       contrato-eventos: ${CONTRATO_EVENTOS_TOPIC:freela.contrato.eventos.v1}
 management:
