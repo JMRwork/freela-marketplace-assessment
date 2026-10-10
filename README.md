@@ -338,9 +338,37 @@ O `contrato-service` grava os eventos na tabela `contrato_event_outbox` na mesma
 
 O particionamento por `contratoId` mantém os eventos de um mesmo contrato na mesma partição; instâncias concorrentes processam partições distintas. Os três consumidores usam grupos próprios, permitindo que cada serviço receba todos os eventos. Notificações são geradas para ambos os participantes em criação, conclusão e cancelamento, e para o cliente quando uma entrega é registrada. Reputação reage somente à conclusão. Auditoria registra todos os eventos.
 
-O envelope JSON contém `eventId` (UUID único), `eventType`, `aggregateType`, `contratoId`, `occurredAt` (ISO-8601 UTC), `correlationId` e `data`. Os campos `eventId`, `occurredAt` e `contratoId` não se repetem dentro de `data`.
+#### Contrato de mensagem
 
-Exemplo de `ContratoCriado`:
+Todos os eventos são mensagens JSON no tópico `freela.contrato.eventos.v1`. O produtor é o `contrato-service`; a chave Kafka é o UUID de `contratoId` codificado como string UTF-8. Essa chave mantém eventos do mesmo contrato na mesma partição.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `eventId` | UUID | Sim | Identificador único do evento, usado na deduplicação. |
+| `eventType` | string | Sim | Nome do evento; valores listados na tabela abaixo. |
+| `aggregateType` | string | Sim | Tipo do agregado; sempre `Contrato`. |
+| `contratoId` | UUID | Sim | Identificador do contrato e chave Kafka. |
+| `occurredAt` | string ISO-8601 UTC | Sim | Data e hora em que a transição ocorreu. |
+| `correlationId` | UUID/string | Sim | Correlação recebida em `X-Correlation-Id` ou gerada pelo produtor. |
+| `data.clienteId` | UUID | Sim | Cliente associado ao contrato. |
+| `data.freelancerId` | UUID | Sim | Freelancer associado ao contrato. |
+| `data.titulo` | string | Sim | Título do contrato. |
+| `data.valor` | decimal | Sim | Valor monetário do contrato. |
+
+`eventId`, `occurredAt` e `contratoId` aparecem apenas no envelope, não dentro de `data`.
+
+| Nome do evento (`eventType`) | Produtor | Consumidores | Dados específicos |
+|---|---|---|---|
+| `ContratoCriado` | `contrato-service` | `notificacao-service` (notifica cliente e freelancer), `auditoria-service` | Campos comuns de `data`. |
+| `EntregaRegistrada` | `contrato-service` | `notificacao-service` (notifica cliente), `auditoria-service` | Campos comuns de `data`. |
+| `ContratoConcluido` | `contrato-service` | `notificacao-service` (notifica cliente e freelancer), `reputacao-service`, `auditoria-service` | Campos comuns de `data`; reputação incrementa o histórico do freelancer pelo valor. |
+| `ContratoCancelado` | `contrato-service` | `notificacao-service` (notifica cliente e freelancer), `auditoria-service` | Campos comuns de `data`. |
+
+#### Exemplos de mensagens
+
+Os exemplos usam IDs fictícios. Em todos eles, envie a chave Kafka `4dfb2880-082b-41e8-9c88-750e6f75f77b` e o payload JSON mostrado.
+
+`ContratoCriado`:
 
 ```json
 {
@@ -359,7 +387,64 @@ Exemplo de `ContratoCriado`:
 }
 ```
 
-Os eventos `EntregaRegistrada`, `ContratoConcluido` e `ContratoCancelado` usam o mesmo envelope e os mesmos campos de `data` (cliente, freelancer, título e valor). O tipo do evento diferencia a transição. Para manter a correlação, as chamadas HTTP podem enviar `X-Correlation-Id`; quando ausente, o serviço gera um UUID. O tópico pode ser substituído por `CONTRATO_EVENTOS_TOPIC`; os endereços de bootstrap seguem `KAFKA_BOOTSTRAP_SERVERS`.
+`EntregaRegistrada` (envelope idêntico; cada ocorrência tem seu próprio `eventId` e `occurredAt`):
+
+```json
+{
+  "eventId": "3a1e0c06-b149-4a71-baf8-4f09a5886900",
+  "eventType": "EntregaRegistrada",
+  "aggregateType": "Contrato",
+  "contratoId": "4dfb2880-082b-41e8-9c88-750e6f75f77b",
+  "occurredAt": "2026-10-11T14:30:00Z",
+  "correlationId": "f973e469-4fc5-4710-b0d4-559f3c39bf84",
+  "data": {
+    "clienteId": "11111111-1111-1111-1111-111111111111",
+    "freelancerId": "22222222-2222-2222-2222-222222222222",
+    "titulo": "Construção de API de pagamentos",
+    "valor": 3500.00
+  }
+}
+```
+
+`ContratoConcluido`:
+
+```json
+{
+  "eventId": "47bdc4c5-8d8b-4266-a9c3-30d3f190e1f4",
+  "eventType": "ContratoConcluido",
+  "aggregateType": "Contrato",
+  "contratoId": "4dfb2880-082b-41e8-9c88-750e6f75f77b",
+  "occurredAt": "2026-10-12T16:00:00Z",
+  "correlationId": "f973e469-4fc5-4710-b0d4-559f3c39bf84",
+  "data": {
+    "clienteId": "11111111-1111-1111-1111-111111111111",
+    "freelancerId": "22222222-2222-2222-2222-222222222222",
+    "titulo": "Construção de API de pagamentos",
+    "valor": 3500.00
+  }
+}
+```
+
+`ContratoCancelado`:
+
+```json
+{
+  "eventId": "91826c71-44fa-4748-a24f-256c3a0a2f82",
+  "eventType": "ContratoCancelado",
+  "aggregateType": "Contrato",
+  "contratoId": "4dfb2880-082b-41e8-9c88-750e6f75f77b",
+  "occurredAt": "2026-10-12T16:30:00Z",
+  "correlationId": "f973e469-4fc5-4710-b0d4-559f3c39bf84",
+  "data": {
+    "clienteId": "11111111-1111-1111-1111-111111111111",
+    "freelancerId": "22222222-2222-2222-2222-222222222222",
+    "titulo": "Construção de API de pagamentos",
+    "valor": 3500.00
+  }
+}
+```
+
+Para manter a correlação, as chamadas HTTP podem enviar `X-Correlation-Id`; quando ausente, o serviço gera um UUID. O tópico pode ser substituído por `CONTRATO_EVENTOS_TOPIC`; os endereços de bootstrap seguem `KAFKA_BOOTSTRAP_SERVERS`.
 
 As transições são acionadas com `POST /api/contratos/{id}/entrega`, `POST /api/contratos/{id}/conclusao` e `POST /api/contratos/{id}/cancelamento`. Exemplo: após criar o contrato, registre a entrega e conclua-o para publicar os eventos correspondentes.
 
