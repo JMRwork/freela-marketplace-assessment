@@ -363,6 +363,8 @@ Os eventos `EntregaRegistrada`, `ContratoConcluido` e `ContratoCancelado` usam o
 
 As transições são acionadas com `POST /api/contratos/{id}/entrega`, `POST /api/contratos/{id}/conclusao` e `POST /api/contratos/{id}/cancelamento`. Exemplo: após criar o contrato, registre a entrega e conclua-o para publicar os eventos correspondentes.
 
+O `auditoria-service` persiste `eventId`, `eventType`, `contratoId`, `occurredAt`, `correlationId`, o payload original e o horário de recebimento. Esses campos podem ser consultados em `GET /api/auditoria`; `occurredAt` representa a data e hora do evento, enquanto `recebidoEm` indica quando a auditoria o processou.
+
 ## Logs
 
 Todos os serviços utilizam logs em nível `INFO` com um formato comum contendo data, nível, nome da aplicação, thread, logger e mensagem.

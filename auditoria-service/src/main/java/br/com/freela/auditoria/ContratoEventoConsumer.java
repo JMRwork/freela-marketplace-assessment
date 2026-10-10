@@ -3,6 +3,7 @@ package br.com.freela.auditoria;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,10 +29,11 @@ class ContratoEventoConsumer {
         UUID contratoId = UUID.fromString(required(event, "contratoId"));
         String eventType = required(event, "eventType");
         String correlationId = required(event, "correlationId");
+        Instant occurredAt = Instant.parse(required(event, "occurredAt"));
 
-        log.info("auditoria.evento.recebido eventId={} eventType={} contratoId={} correlationId={}",
-                eventId, eventType, contratoId, correlationId);
-        service.registrar(eventId, contratoId, eventType, correlationId, payload);
+        log.info("auditoria.evento.recebido eventId={} eventType={} contratoId={} occurredAt={} correlationId={}",
+                eventId, eventType, contratoId, occurredAt, correlationId);
+        service.registrar(eventId, contratoId, eventType, correlationId, occurredAt, payload);
     }
 
     private String required(JsonNode node, String field) {
