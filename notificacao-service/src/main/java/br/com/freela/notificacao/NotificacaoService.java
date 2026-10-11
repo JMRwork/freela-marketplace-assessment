@@ -15,7 +15,7 @@ public class NotificacaoService {
    log.info("notificacao.evento.duplicado eventId={} destinatarioId={}",eventId,destinatarioId);
    return;
   }
-  var n=repository.save(new Notificacao(eventId,contratoId,destinatarioId,tipo,mensagem));
+  var n=repository.saveAndFlush(new Notificacao(eventId,contratoId,destinatarioId,tipo,mensagem));
   log.info("notificacao.evento.sucesso eventId={} notificacaoId={} contratoId={} destinatarioId={}",eventId,n.id,contratoId,destinatarioId);
  }
 }

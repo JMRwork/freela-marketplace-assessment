@@ -25,7 +25,7 @@ public class AuditoriaService {
             log.info("auditoria.registro.duplicado eventId={} aggregateId={}", eventId, aggregateId);
             return;
         }
-        var evento = repository.save(new EventoAuditoria(eventId, aggregateId, eventType,
+        var evento = repository.saveAndFlush(new EventoAuditoria(eventId, aggregateId, eventType,
                 correlationId, occurredAt, payload));
         log.info("auditoria.registro.sucesso auditoriaId={} eventId={} aggregateId={} eventType={} occurredAt={} correlationId={}",
                 evento.id, eventId, aggregateId, eventType, occurredAt, correlationId);

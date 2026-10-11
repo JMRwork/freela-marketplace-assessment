@@ -330,7 +330,19 @@ http://localhost:8090
 
 ### Eventos do ciclo de vida dos contratos
 
-O `contrato-service` grava os eventos na tabela `contrato_event_outbox` na mesma transação que persiste o contrato. Um publicador em background envia as mensagens pendentes para Kafka usando `contratoId` como chave. A mensagem só é marcada como publicada após confirmação do broker; falhas permanecem na outbox para nova tentativa. Esse mecanismo fornece entrega pelo menos uma vez, portanto os consumidores são idempotentes por `eventId`.
+O `contrato-service` grava os eventos na tabela `contrato_event_outbox` na mesma transação que persiste o contrato. Um publicador em background envia as mensagens pendentes para Kafka usando `contratoId` como chave. A mensagem só é marcada como publicada após confirmação do broker; falhas permanecem na outbox para nova tentativa. Uma falha depois da confirmação do Kafka e antes da atualização da outbox pode publicar o evento novamente; portanto, os consumidores são idempotentes usando `eventId`.
+
+#### Idempotência dos consumidores
+
+Cada consumidor verifica o identificador antes de executar o efeito e persiste o resultado e a chave idempotente dentro de uma transação local. Restrições únicas no banco são a proteção final contra duas entregas concorrentes do mesmo evento; o marcador e os efeitos são confirmados ou revertidos juntos. Após uma falha durante a transação, a mensagem pode ser reentregue e processada sem duplicar os efeitos:
+
+| Serviço | Chave idempotente persistida | Efeito protegido |
+|---|---|---|
+| `notificacao-service` | `(eventId, destinatarioId)`, com restrição única em `notificacoes` | Uma notificação por destinatário para cada evento. A chave composta permite notificar ambos os participantes sem duplicar nenhuma notificação. |
+| `reputacao-service` | `eventId` como chave primária de `reputacao_eventos_processados` | O registro processado e a atualização da contagem/valor são gravados na mesma transação. |
+| `auditoria-service` | `eventId` único em `auditoria_eventos` | Um único registro de auditoria por evento. |
+
+Uma repetição já persistida é reconhecida e ignorada. Se duas instâncias disputarem a mesma mensagem, a restrição única impede o segundo efeito; qualquer erro de persistência aborta sua transação em vez de confirmar um efeito parcial. A confirmação do offset ocorre somente depois que o listener termina; se a transação falhar, a mensagem permanece elegível para reprocessamento conforme a política do consumidor.
 
 | Tópico | Produtor | Consumidores | Partições | Chave |
 |---|---|---|---:|---|
@@ -475,8 +487,11 @@ contrato.persistence.save.sucesso
 contrato.evento.outbox
 contrato.evento.publicado
 notificacao.evento.sucesso
+notificacao.evento.duplicado
 reputacao.evento.sucesso
+reputacao.evento.duplicado
 auditoria.registro.sucesso
+auditoria.registro.duplicado
 contrato.criacao.sucesso
 reputacao.atualizacao.inicio
 reputacao.atualizacao.sucesso
