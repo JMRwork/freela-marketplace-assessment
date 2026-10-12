@@ -133,6 +133,54 @@ curl -sS -X POST "http://localhost:8080/api/contratos/$CONTRATO_CANCELAR_ID/canc
 
 O Gateway gera um `X-Correlation-Id` se a chamada não enviar um.
 
+### Respostas de erro
+
+Para ver o status HTTP, os cabeçalhos e o corpo retornado quando uma chamada falha, use `-i --fail-with-body`. Por exemplo, um título vazio viola a validação do contrato:
+
+```bash
+curl -i --fail-with-body -X POST http://localhost:8080/api/contratos \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: teste-contrato-erro-001" \
+  -d '{
+    "clienteId": "11111111-1111-1111-1111-111111111111",
+    "freelancerId": "22222222-2222-2222-2222-222222222222",
+    "titulo": "",
+    "valor": 3500.00
+  }'
+```
+
+A resposta de validação aparece no `curl` neste formato (o cabeçalho `Date` e o horário variam):
+
+```http
+HTTP/1.1 400
+Content-Type: application/json
+
+{
+  "timestamp": "2026-10-12T04:08:45.077Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "A requisição contém campos inválidos.",
+  "path": "/api/contratos",
+  "correlationId": "teste-contrato-erro-001",
+  "details": {
+    "titulo": "must not be blank"
+  }
+}
+```
+
+As APIs dos serviços retornam esse formato de erro com timestamp, status, mensagem, caminho e identificador de correlação. `details` lista campos inválidos quando se trata de erro de validação e fica vazio nos outros casos.
+
+Status mais comuns:
+
+| Status | Significado |
+|---|---|
+| `400 Bad Request` | JSON, parâmetro ou campo enviado inválido |
+| `404 Not Found` | Contrato não encontrado |
+| `409 Conflict` | A operação não é permitida no estado atual do contrato |
+| `500 Internal Server Error` | Falha inesperada; a resposta não expõe detalhes internos |
+
+`-i` mostra o status e os cabeçalhos; `--fail-with-body` mantém o corpo da resposta visível e também informa ao shell que a requisição falhou.
+
 ## Eventos Kafka
 
 O produtor grava cada evento na outbox do `contrato-service`, na mesma transação da alteração do contrato. Um processo em segundo plano publica os eventos na confirmação do Kafka. Se houver falha, a outbox permite nova tentativa; por isso os consumidores tratam duplicatas.
@@ -183,6 +231,20 @@ A chave `contratoId` mantém os eventos de um mesmo contrato na mesma partição
 Os consumidores usam `eventId` para evitar efeitos duplicados. Notificações usam também o destinatário na chave, para permitir uma notificação por participante. Auditoria e reputação persistem o identificador processado junto com seus efeitos.
 
 O tópico pode ser alterado com `CONTRATO_EVENTOS_TOPIC`.
+
+### Falhas e reprocessamento
+
+Se um consumidor falhar, a mesma mensagem é tentada novamente duas vezes, com intervalo de um segundo entre as tentativas (três tentativas no total, contando a primeira). Depois disso, a mensagem é enviada a um tópico de erro exclusivo do serviço:
+
+| Consumidor | Tópico de mensagens com erro |
+|---|---|
+| Notificações | `freela.contrato.eventos.v1.notificacao-service.DLT` |
+| Reputação | `freela.contrato.eventos.v1.reputacao-service.DLT` |
+| Auditoria | `freela.contrato.eventos.v1.auditoria-service.DLT` |
+
+O tópico mantém o payload original e os metadados de origem/erro do Kafka por 30 dias. Os tópicos têm três partições, como o tópico original. A mensagem é registrada nos logs com serviço, tópico, partição, offset e chave. Uma falha pausa temporariamente a partição afetada durante as tentativas; outras partições e os demais grupos de consumidores continuam.
+
+Para diagnosticar ou reprocessar uma mensagem, abra o Kafka UI em `http://localhost:8090`, consulte o tópico DLT do serviço e copie o payload e a chave para o tópico original. O `eventId` é mantido no payload, então a deduplicação existente protege contra efeitos repetidos. As tentativas e o intervalo podem ser configurados com `KAFKA_RETRY_ATTEMPTS` e `KAFKA_RETRY_INTERVAL_MS`; a retenção em milissegundos é ajustável com `KAFKA_DLT_RETENTION_MS`.
 
 ## Consultas dos serviços
 

@@ -19,6 +19,10 @@ spring:
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
     listener:
       ack-mode: record
       observation-enabled: true
@@ -26,8 +30,12 @@ app:
   kafka:
     listener:
       concurrency: ${KAFKA_CONSUMER_CONCURRENCY:3}
+      retry-attempts: ${KAFKA_RETRY_ATTEMPTS:2}
+      retry-interval-ms: ${KAFKA_RETRY_INTERVAL_MS:1000}
+      dead-letter-retention-ms: ${KAFKA_DLT_RETENTION_MS:2592000000}
     topics:
       contrato-eventos: ${CONTRATO_EVENTOS_TOPIC:freela.contrato.eventos.v1}
+      partitions: 3
 management:
   tracing:
     sampling:

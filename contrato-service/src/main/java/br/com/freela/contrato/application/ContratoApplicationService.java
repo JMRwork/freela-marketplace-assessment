@@ -72,7 +72,8 @@ public class ContratoApplicationService {
     @Transactional(readOnly = true)
     public Contrato buscar(UUID id) {
         log.info("contrato.busca.inicio contratoId={}", id);
-        var contrato = repository.buscarPorId(id).orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado: " + id));
+        var contrato = repository.buscarPorId(id)
+                .orElseThrow(() -> new ContratoNaoEncontradoException("Contrato não encontrado: " + id));
         log.info("contrato.busca.sucesso contratoId={} status={}", id, contrato.status());
         return contrato;
     }
@@ -90,7 +91,7 @@ public class ContratoApplicationService {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("contrato.atualizacao.inicio contratoId={} correlationId={}", id, resolvedCorrelationId);
         Contrato contrato = repository.buscarPorId(id)
-                .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado: " + id));
+                .orElseThrow(() -> new ContratoNaoEncontradoException("Contrato não encontrado: " + id));
         operacao.accept(contrato);
         Contrato salvo = repository.salvar(contrato);
         registrarEventos(contrato, resolvedCorrelationId, traceparentAtual(traceparent));
