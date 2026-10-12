@@ -15,6 +15,32 @@ Marketplace de freelancers desenvolvido em Java 21, Spring Boot e arquitetura de
 
 O PostgreSQL usa a porta `5432`; Kafka, `9092`; Kafka UI, `8090`. A interface do Eureka fica em `http://localhost:8761`.
 
+## Visão geral da arquitetura
+
+O Gateway recebe as chamadas HTTP e localiza os serviços de aplicação pelo Eureka. O `contrato-service` é responsável pelos dados e pelo ciclo de vida do contrato; cada serviço de domínio (`contrato`, `notificacao`, `reputacao` e `auditoria`) mantém seu próprio banco PostgreSQL. As mudanças de estado geram eventos de domínio e os serviços consumidores reagem de forma independente pelo Kafka:
+
+```text
+Cliente -> API Gateway -> contrato-service -> PostgreSQL (contratos + outbox)
+                                      |
+                                      v
+                             Kafka: freela.contrato.eventos.v1
+                              /          |           \
+                   notificacao-service  reputacao-service  auditoria-service
+                              \          |           /
+                            PostgreSQL isolado por serviço
+```
+
+O Eureka fornece descoberta para o Gateway. Grafana, Loki e Zipkin compõem a observabilidade local: aplicações enviam logs ao Loki e traces ao Zipkin; ambos podem ser consultados pelo Grafana.
+
+| Componente de infraestrutura | Uso | Porta local |
+|---|---|---:|
+| PostgreSQL | Banco separado por serviço | 5432 |
+| Kafka (KRaft) | Transporte dos eventos | 9092 |
+| Kafka UI | Inspeção de tópicos e mensagens | 8090 |
+| Grafana | Exploração de logs e traces | 3000 |
+| Loki | Armazenamento centralizado de logs | 3100 |
+| Zipkin | Armazenamento e consulta de traces | 9411 |
+
 ## Iniciar infraestrutura
 
 É necessário ter Docker e Docker Compose instalados. Na raiz do projeto:
@@ -42,6 +68,7 @@ docker compose -f infra/docker-compose.yml down -v
 ```
 
 O PostgreSQL cria um banco separado para cada serviço. Kafka funciona em modo KRaft, sem ZooKeeper. O Kafka UI fica em `http://localhost:8090`.
+O Compose também inicia Grafana (`http://localhost:3000`), Loki e Zipkin (`http://localhost:9411`); suas fontes de dados Loki e Zipkin são provisionadas no Grafana. O script `infra/postgres/init-databases.sql` cria os bancos `contrato_db`, `notificacao_db`, `reputacao_db` e `auditoria_db` na primeira inicialização do volume PostgreSQL.
 
 ## Iniciar aplicações
 
@@ -224,13 +251,32 @@ Em cada evento:
 - `contratoId` também é a chave Kafka.
 - `occurredAt` registra quando o evento aconteceu.
 - `correlationId` relaciona a operação entre serviços.
-- `data` contém cliente, freelancer, título e valor do contrato.
+- `data` contém os dados de domínio específicos do evento. Nos quatro eventos atuais, inclui `clienteId` e `freelancerId` (UUIDs), `titulo` (texto) e `valor` (número decimal JSON). O formato `BigDecimal` de `valor` não deve ser tratado como texto.
+
+| Evento | Campos em `data` |
+|---|---|
+| `ContratoCriado` | `clienteId`, `freelancerId`, `titulo`, `valor` |
+| `EntregaRegistrada` | `clienteId`, `freelancerId`, `titulo`, `valor` |
+| `ContratoConcluido` | `clienteId`, `freelancerId`, `titulo`, `valor` |
+| `ContratoCancelado` | `clienteId`, `freelancerId`, `titulo`, `valor` |
+
+Os UUIDs são serializados como strings e `occurredAt` como timestamp ISO-8601 UTC. Os campos comuns do envelope identificam o evento e o agregado; informações específicas ficam no objeto `data`.
 
 A chave `contratoId` mantém os eventos de um mesmo contrato na mesma partição e preserva sua ordem. Partições diferentes podem ser processadas em paralelo. A concorrência padrão de cada consumidor é três e pode ser alterada com `KAFKA_CONSUMER_CONCURRENCY`.
 
 Os consumidores usam `eventId` para evitar efeitos duplicados. Notificações usam também o destinatário na chave, para permitir uma notificação por participante. Auditoria e reputação persistem o identificador processado junto com seus efeitos.
 
 O tópico pode ser alterado com `CONTRATO_EVENTOS_TOPIC`.
+
+### Publicação transacional e idempotência
+
+O `contrato-service` usa o padrão **Transactional Outbox**: grava a alteração do contrato e a mensagem serializada na tabela `contrato_event_outbox` dentro da mesma transação PostgreSQL. Um publicador agendado consulta até 100 mensagens pendentes a cada segundo, publica no Kafka e marca cada mensagem como publicada após confirmação do broker. Assim, uma falha antes do commit não deixa o contrato alterado sem o evento correspondente na outbox; falhas de publicação permitem nova tentativa.
+
+Essa é uma transação entre o banco de contratos e a outbox, não uma transação distribuída entre PostgreSQL e Kafka nem uma garantia de entrega exatamente uma vez. Se o Kafka aceitar a mensagem e o processo falhar antes de persistir `publishedAt`, a mensagem pode ser publicada de novo. O produtor configura `acks=all` e `enable.idempotence=true`, mas os consumidores também precisam deduplicar para cobrir a repetição entre tentativas e reinícios.
+
+A deduplicação é persistente no banco de cada consumidor: notificações usam a combinação `eventId` e `destinatarioId` (uma mensagem pode gerar notificações para duas pessoas); auditoria mantém `eventId` único; reputação registra `eventId` processado antes de atualizar o agregado. O registro de idempotência e o efeito do evento são gravados na mesma transação local do consumidor. O processamento é, portanto, tolerante à entrega repetida, sem alegar atomicidade global entre os serviços.
+
+O consumidor confirma offsets por registro após processar com sucesso; falhas são repetidas e depois encaminhadas à DLT conforme descrito abaixo. Os grupos independentes permitem que cada serviço mantenha seu próprio progresso.
 
 ### Falhas e reprocessamento
 
@@ -269,9 +315,9 @@ curl -sS http://localhost:8080/api/auditoria \
 
 ## Logs e tracing
 
-Os seis serviços exibem logs no console e também os enviam ao Loki. Acesse o Grafana em `http://localhost:3000` e selecione **Explore → Loki** para pesquisar logs por `service`, `contratoId`, `eventId` ou `correlationId`.
+Os seis serviços exibem logs no console e também os enviam diretamente ao Loki usando o appender Logback Loki4j; não é necessário Promtail para logs das aplicações. Os logs incluem nome do serviço, nível, trace ID e span ID, além dos campos de contexto estruturados usados pelos serviços. Acesse o Grafana em `http://localhost:3000` e selecione **Explore → Loki** para pesquisar logs por `service`, `contratoId`, `eventId` ou `correlationId`. O Loki está configurado com retenção de sete dias.
 
-> Sem Promtail, os logs dos containers de infraestrutura, como PostgreSQL e Kafka, não são enviados ao Loki. Se Loki estiver indisponível, os logs das aplicações continuam disponíveis no console.
+> Os logs dos containers de infraestrutura, como PostgreSQL e Kafka, não são enviados ao Loki. Se Loki estiver indisponível, os logs das aplicações continuam disponíveis no console.
 
 Grafana:
 
@@ -279,9 +325,9 @@ Grafana:
 - Login local inicial: `admin` / `admin`
 - Altere `GRAFANA_ADMIN_USER` e `GRAFANA_ADMIN_PASSWORD` antes de expor o ambiente.
 
-O tracing usa Micrometer/Brave e exporta os traces para Zipkin em `http://localhost:9411`. No Grafana, selecione **Explore → Zipkin**; a interface do Zipkin também está disponível diretamente. O contexto segue do Gateway para o serviço de contratos e, pelo header Kafka, aos consumidores.
+O tracing usa Micrometer/Brave e exporta os traces para Zipkin em `http://localhost:9411` (endpoint de exportação `/api/v2/spans`). A probabilidade de amostragem padrão é `1.0` (100%) e é configurável por `TRACING_SAMPLING_PROBABILITY`. No Grafana, selecione **Explore → Zipkin**; a interface do Zipkin também está disponível diretamente. O contexto HTTP é propagado pelo Gateway. Ao criar uma mensagem, o `contrato-service` persiste o contexto W3C `traceparent` validado na outbox e o inclui como header Kafka para correlação no fluxo assíncrono. `X-Correlation-Id` é um identificador funcional/log separado do contexto de tracing; se não for enviado, o Gateway/serviço gera um identificador.
 
-O sampling padrão é 100%. Para alterá-lo, configure `TRACING_SAMPLING_PROBABILITY`. As URLs do Loki e Zipkin podem ser configuradas por `LOKI_URL` e `ZIPKIN_ENDPOINT`.
+As URLs do Loki e Zipkin podem ser configuradas por `LOKI_URL` e `ZIPKIN_ENDPOINT`.
 
 ## Tecnologias
 
