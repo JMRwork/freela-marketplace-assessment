@@ -56,7 +56,7 @@ mvn -pl reputacao-service spring-boot:run
 mvn -pl auditoria-service spring-boot:run
 ```
 
-As aplicações locais usam por padrão `localhost` para PostgreSQL, Kafka e Eureka. Os endereços podem ser alterados pelas variáveis `DB_URL`, `KAFKA_BOOTSTRAP_SERVERS` e `EUREKA_URL`.
+As aplicações locais usam por padrão `localhost` para PostgreSQL, Kafka e Eureka. Os endereços podem ser alterados pelas variáveis `DB_URL`, `KAFKA_BOOTSTRAP_SERVERS` e `EUREKA_URL`. Os serviços se registram no Eureka usando o endereço IP da máquina; isso evita falhas de resolução do hostname em ambientes Windows. Esse comportamento pode ser controlado com `EUREKA_PREFER_IP_ADDRESS`.
 
 ## Contratos
 
@@ -71,20 +71,64 @@ O contrato começa em `ATIVO`. A entrega muda o status para `ENTREGA_REGISTRADA`
 | Concluir contrato | `POST /api/contratos/{id}/conclusao` |
 | Cancelar contrato | `POST /api/contratos/{id}/cancelamento` |
 
-As rotas também estão disponíveis através do Gateway na porta `8080`.
+As rotas também estão disponíveis através do Gateway na porta `8080`. Os comandos abaixo usam Bash, `curl` e `jq`. Mantenha o mesmo `X-Correlation-Id` para localizar toda a sequência nos logs.
 
-Exemplo de criação:
+### Fluxo de criação até conclusão
+
+Crie um contrato. O comando guarda o `id` retornado para usar nas próximas chamadas:
 
 ```bash
-curl -X POST http://localhost:8080/api/contratos \
+CORRELATION_ID="teste-contrato-001"
+CONTRATO_ID=$(curl -sS -X POST http://localhost:8080/api/contratos \
   -H "Content-Type: application/json" \
-  -H "X-Correlation-Id: teste-contrato-001" \
+  -H "X-Correlation-Id: $CORRELATION_ID" \
   -d '{
     "clienteId": "11111111-1111-1111-1111-111111111111",
     "freelancerId": "22222222-2222-2222-2222-222222222222",
     "titulo": "Construção de API de pagamentos",
     "valor": 3500.00
-  }'
+  }' | jq -r '.id')
+
+echo "Contrato criado: $CONTRATO_ID"
+```
+
+Liste contratos e consulte o contrato recém-criado:
+
+```bash
+curl -sS http://localhost:8080/api/contratos \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+
+curl -sS "http://localhost:8080/api/contratos/$CONTRATO_ID" \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+```
+
+Registre a entrega e depois conclua o mesmo contrato. A conclusão só é permitida após a entrega:
+
+```bash
+curl -sS -X POST "http://localhost:8080/api/contratos/$CONTRATO_ID/entrega" \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+
+curl -sS -X POST "http://localhost:8080/api/contratos/$CONTRATO_ID/conclusao" \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+```
+
+### Fluxo alternativo de cancelamento
+
+Um contrato concluído não pode ser cancelado. Para testar o cancelamento, crie outro contrato e cancele-o enquanto ainda estiver ativo:
+
+```bash
+CONTRATO_CANCELAR_ID=$(curl -sS -X POST http://localhost:8080/api/contratos \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: $CORRELATION_ID" \
+  -d '{
+    "clienteId": "11111111-1111-1111-1111-111111111111",
+    "freelancerId": "22222222-2222-2222-2222-222222222222",
+    "titulo": "Manutenção de documentação",
+    "valor": 500.00
+  }' | jq -r '.id')
+
+curl -sS -X POST "http://localhost:8080/api/contratos/$CONTRATO_CANCELAR_ID/cancelamento" \
+  -H "X-Correlation-Id: $CORRELATION_ID"
 ```
 
 O Gateway gera um `X-Correlation-Id` se a chamada não enviar um.
@@ -148,13 +192,24 @@ O tópico pode ser alterado com `CONTRATO_EVENTOS_TOPIC`.
 | Reputação | `GET /api/reputacoes` |
 | Auditoria | `GET /api/auditoria` |
 
-Os endpoints estão disponíveis pelo Gateway ou diretamente na porta do serviço correspondente.
+Os endpoints estão disponíveis pelo Gateway ou diretamente na porta do serviço correspondente. Após os consumidores Kafka processarem os eventos, consulte os resultados:
+
+```bash
+curl -sS http://localhost:8080/api/notificacoes \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+
+curl -sS http://localhost:8080/api/reputacoes \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+
+curl -sS http://localhost:8080/api/auditoria \
+  -H "X-Correlation-Id: $CORRELATION_ID"
+```
 
 ## Logs e tracing
 
-Os seis serviços enviam logs diretamente ao Loki. Acesse o Grafana em `http://localhost:3000` e selecione **Explore → Loki** para pesquisar logs por `service`, `contratoId`, `eventId` ou `correlationId`.
+Os seis serviços exibem logs no console e também os enviam ao Loki. Acesse o Grafana em `http://localhost:3000` e selecione **Explore → Loki** para pesquisar logs por `service`, `contratoId`, `eventId` ou `correlationId`.
 
-> Sem Promtail, os logs dos containers de infraestrutura, como PostgreSQL e Kafka, não são enviados ao Loki. Se Loki estiver indisponível, os serviços Spring não mantêm uma cópia dos logs no console.
+> Sem Promtail, os logs dos containers de infraestrutura, como PostgreSQL e Kafka, não são enviados ao Loki. Se Loki estiver indisponível, os logs das aplicações continuam disponíveis no console.
 
 Grafana:
 

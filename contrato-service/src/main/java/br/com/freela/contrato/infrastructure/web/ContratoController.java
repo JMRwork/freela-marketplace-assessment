@@ -32,7 +32,7 @@ public class ContratoController {
     public ContratoResponse registrarEntrega(
             @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
             @RequestHeader(value="traceparent", required=false) String traceparent,
-            @PathVariable UUID id) {
+            @PathVariable("id") UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.entrega.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
         var contrato = service.registrarEntrega(id, resolvedCorrelationId, traceparent);
@@ -45,7 +45,7 @@ public class ContratoController {
     public ContratoResponse concluir(
             @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
             @RequestHeader(value="traceparent", required=false) String traceparent,
-            @PathVariable UUID id) {
+            @PathVariable("id") UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.conclusao.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
         var contrato = service.concluir(id, resolvedCorrelationId, traceparent);
@@ -58,7 +58,7 @@ public class ContratoController {
     public ContratoResponse cancelar(
             @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
             @RequestHeader(value="traceparent", required=false) String traceparent,
-            @PathVariable UUID id) {
+            @PathVariable("id") UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.cancelamento.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
         var contrato = service.cancelar(id, resolvedCorrelationId, traceparent);
@@ -67,7 +67,7 @@ public class ContratoController {
         return ContratoResponse.from(contrato);
     }
     @GetMapping("/{id}")
-    public ContratoResponse buscar(@RequestHeader(value="X-Correlation-Id", required=false) String correlationId, @PathVariable UUID id) {
+    public ContratoResponse buscar(@RequestHeader(value="X-Correlation-Id", required=false) String correlationId, @PathVariable("id") UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.buscar.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
         var contrato = service.buscar(id);
