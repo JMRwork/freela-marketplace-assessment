@@ -30,17 +30,17 @@ public class ContratoApplicationService {
 
     @Transactional
     public Contrato criar(CriarContratoCommand cmd, String correlationId) {
-        log.info("contrato.criacao.inicio clienteId={} freelancerId={} titulo={} valor={}",
-                cmd.clienteId(), cmd.freelancerId(), cmd.titulo(), cmd.valor());
+        String resolvedCorrelationId = resolveCorrelationId(correlationId);
+        log.info("contrato.criacao.inicio correlationId={}", resolvedCorrelationId);
         Contrato contrato = Contrato.criar(cmd.clienteId(), cmd.freelancerId(), cmd.titulo(), cmd.valor());
-        log.info("contrato.dominio.criado contratoId={} status={} domainEvents={}",
-                contrato.id(), contrato.status(), contrato.domainEvents().size());
+        log.info("contrato.dominio.criado contratoId={} status={} domainEvents={} correlationId={}",
+                contrato.id(), contrato.status(), contrato.domainEvents().size(), resolvedCorrelationId);
         Contrato salvo = repository.salvar(contrato);
 
-        registrarEventos(contrato, correlationId);
+        registrarEventos(contrato, resolvedCorrelationId);
 
-        log.info("contrato.criacao.sucesso contratoId={} clienteId={} freelancerId={} status={}",
-                salvo.id(), salvo.clienteId(), salvo.freelancerId(), salvo.status());
+        log.info("contrato.criacao.sucesso contratoId={} status={} correlationId={}",
+                salvo.id(), salvo.status(), resolvedCorrelationId);
         return salvo;
     }
 
@@ -76,23 +76,29 @@ public class ContratoApplicationService {
     }
 
     private Contrato atualizar(UUID id, String correlationId, java.util.function.Consumer<Contrato> operacao) {
+        String resolvedCorrelationId = resolveCorrelationId(correlationId);
+        log.info("contrato.atualizacao.inicio contratoId={} correlationId={}", id, resolvedCorrelationId);
         Contrato contrato = repository.buscarPorId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado: " + id));
         operacao.accept(contrato);
         Contrato salvo = repository.salvar(contrato);
-        registrarEventos(contrato, correlationId);
-        log.info("contrato.atualizacao.sucesso contratoId={} status={}", salvo.id(), salvo.status());
+        registrarEventos(contrato, resolvedCorrelationId);
+        log.info("contrato.atualizacao.sucesso contratoId={} status={} correlationId={}",
+                salvo.id(), salvo.status(), resolvedCorrelationId);
         return salvo;
     }
 
     private void registrarEventos(Contrato contrato, String correlationId) {
-        String resolvedCorrelationId = correlationId == null || correlationId.isBlank()
+        for (DomainEvent event : contrato.pullDomainEvents()) {
+            eventOutbox.registrar(event, correlationId);
+            log.info("contrato.evento.outbox eventId={} eventType={} contratoId={} correlationId={}",
+                    event.eventId(), event.eventType(), event.contratoId(), correlationId);
+        }
+    }
+
+    private String resolveCorrelationId(String correlationId) {
+        return correlationId == null || correlationId.isBlank()
                 ? UUID.randomUUID().toString()
                 : correlationId.trim();
-        for (DomainEvent event : contrato.pullDomainEvents()) {
-            eventOutbox.registrar(event, resolvedCorrelationId);
-            log.info("contrato.evento.outbox eventId={} eventType={} contratoId={} correlationId={}",
-                    event.eventId(), event.eventType(), event.contratoId(), resolvedCorrelationId);
-        }
     }
 }

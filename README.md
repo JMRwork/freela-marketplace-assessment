@@ -466,7 +466,7 @@ O `auditoria-service` persiste `eventId`, `eventType`, `contratoId`, `occurredAt
 
 ## Logs
 
-Todos os serviços utilizam logs em nível `INFO` com um formato comum contendo data, nível, nome da aplicação, thread, logger e mensagem.
+Todos os serviços utilizam logs em nível `INFO` com um formato comum contendo data, nível, nome da aplicação, thread, logger e mensagem. Os fluxos HTTP registram início e conclusão; o Gateway registra também falhas de transporte e o status HTTP. Os produtores e consumidores registram evento, tipo, contrato, correlação e resultado; falhas de publicação ou consumo são registradas em `ERROR` com a exceção e contexto disponível.
 
 Exemplo:
 
@@ -478,28 +478,33 @@ O código registra pontos importantes do fluxo, incluindo:
 
 ```text
 gateway.request.inicio
+gateway.request.falha
 gateway.request.fim
-http.contrato.criar
+http.contrato.criar.inicio
+http.contrato.criar.sucesso
 contrato.criacao.inicio
-contrato.dominio.criado
 contrato.persistence.save.inicio
 contrato.persistence.save.sucesso
 contrato.evento.outbox
+contrato.evento.publicacao.inicio
 contrato.evento.publicado
+contrato.evento.publicacao.falhou
+notificacao.evento.recebido
 notificacao.evento.sucesso
 notificacao.evento.duplicado
+notificacao.evento.falha
+reputacao.evento.recebido
 reputacao.evento.sucesso
 reputacao.evento.duplicado
-auditoria.registro.sucesso
-auditoria.registro.duplicado
-contrato.criacao.sucesso
-reputacao.atualizacao.inicio
-reputacao.atualizacao.sucesso
+reputacao.evento.falha
+auditoria.evento.recebido
 auditoria.registro.inicio
 auditoria.registro.sucesso
+auditoria.registro.duplicado
+auditoria.evento.falha
 ```
 
-A presença do `correlationId` nas chamadas HTTP permite relacionar logs produzidos durante uma mesma requisição.
+O `correlationId` é gerado pelo Gateway quando não enviado, encaminhado ao `contrato-service` e incluído no envelope Kafka; os consumidores o preservam em seus logs. Logs contêm identificadores técnicos e status, mas não registram o payload da mensagem, título, valor do contrato ou texto da notificação.
 
 ## Infraestrutura local
 

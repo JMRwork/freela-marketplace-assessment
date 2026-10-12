@@ -27,6 +27,9 @@ public class RequestLoggingFilter implements GlobalFilter, Ordered {
                 request.getMethod(), request.getURI().getPath());
 
         return chain.filter(exchange.mutate().request(request).build())
+                .doOnError(exception -> log.error(
+                        "gateway.request.falha correlationId={} method={} path={}",
+                        finalCorrelationId, request.getMethod(), request.getURI().getPath(), exception))
                 .doFinally(signal -> log.info(
                         "gateway.request.fim correlationId={} method={} path={} status={} durationMs={} signal={}",
                         finalCorrelationId, request.getMethod(), request.getURI().getPath(),

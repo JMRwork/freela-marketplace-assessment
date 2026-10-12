@@ -23,8 +23,8 @@ public class ContratoEventOutbox {
         var envelope = ContratoEventEnvelope.from(event, correlationId, objectMapper);
         try {
             String payload = objectMapper.writeValueAsString(envelope);
-            repository.save(new ContratoOutboxEntity(event.eventId(), event.contratoId(), payload,
-                    event.occurredAt()));
+            repository.save(new ContratoOutboxEntity(event.eventId(), event.contratoId(),
+                    event.eventType(), correlationId, payload, event.occurredAt()));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Não foi possível serializar o evento " + event.eventId(), exception);
         }

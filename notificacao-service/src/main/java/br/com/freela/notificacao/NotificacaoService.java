@@ -9,13 +9,13 @@ public class NotificacaoService {
   var n=repository.save(new Notificacao(contratoId,destinatarioId,tipo,mensagem));
   log.info("notificacao.registro.sucesso notificacaoId={} contratoId={} destinatarioId={}",n.id,contratoId,destinatarioId);
  }
- @Transactional public void registrarEvento(UUID eventId, UUID contratoId, UUID destinatarioId, String tipo, String mensagem){
-  log.info("notificacao.evento.inicio eventId={} contratoId={} destinatarioId={} tipo={}",eventId,contratoId,destinatarioId,tipo);
+ @Transactional public void registrarEvento(UUID eventId, UUID contratoId, UUID destinatarioId, String tipo, String correlationId, String mensagem){
+  log.info("notificacao.evento.inicio eventId={} contratoId={} destinatarioId={} tipo={} correlationId={}",eventId,contratoId,destinatarioId,tipo,correlationId);
   if(repository.existsByEventIdAndDestinatarioId(eventId,destinatarioId)){
-   log.info("notificacao.evento.duplicado eventId={} destinatarioId={}",eventId,destinatarioId);
+   log.info("notificacao.evento.duplicado eventId={} contratoId={} destinatarioId={} correlationId={}",eventId,contratoId,destinatarioId,correlationId);
    return;
   }
   var n=repository.saveAndFlush(new Notificacao(eventId,contratoId,destinatarioId,tipo,mensagem));
-  log.info("notificacao.evento.sucesso eventId={} notificacaoId={} contratoId={} destinatarioId={}",eventId,n.id,contratoId,destinatarioId);
+  log.info("notificacao.evento.sucesso eventId={} notificacaoId={} contratoId={} destinatarioId={} correlationId={}",eventId,n.id,contratoId,destinatarioId,correlationId);
  }
 }

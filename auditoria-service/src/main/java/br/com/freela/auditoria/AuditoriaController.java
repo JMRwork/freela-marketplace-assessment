@@ -4,5 +4,10 @@ import org.slf4j.*; import org.springframework.web.bind.annotation.*; import jav
 public class AuditoriaController {
  private static final Logger log=LoggerFactory.getLogger(AuditoriaController.class); private final EventoAuditoriaRepository repository;
  AuditoriaController(EventoAuditoriaRepository r){this.repository=r;}
- @GetMapping public List<EventoAuditoria> listar(@RequestHeader(value="X-Correlation-Id",required=false) String correlationId){log.info("http.auditoria.listar correlationId={}",correlationId);return repository.findAll();}
+ @GetMapping public List<EventoAuditoria> listar(@RequestHeader(value="X-Correlation-Id",required=false) String correlationId){
+  log.info("http.auditoria.listar.inicio correlationId={}",correlationId);
+  var eventos=repository.findAll();
+  log.info("http.auditoria.listar.sucesso correlationId={} quantidade={}",correlationId,eventos.size());
+  return eventos;
+ }
 }

@@ -25,16 +25,27 @@ class ContratoEventoConsumer {
             groupId = "${spring.kafka.consumer.group-id}",
             concurrency = "${app.kafka.listener.concurrency}")
     public void receber(String payload) throws IOException {
-        JsonNode event = objectMapper.readTree(payload);
-        UUID eventId = UUID.fromString(required(event, "eventId"));
-        UUID contratoId = UUID.fromString(required(event, "contratoId"));
-        String eventType = required(event, "eventType");
-        String correlationId = required(event, "correlationId");
-        Instant occurredAt = Instant.parse(required(event, "occurredAt"));
+        String eventId = "desconhecido";
+        String contratoId = "desconhecido";
+        String eventType = "desconhecido";
+        String correlationId = "desconhecido";
+        try {
+            JsonNode event = objectMapper.readTree(payload);
+            eventId = required(event, "eventId");
+            contratoId = required(event, "contratoId");
+            eventType = required(event, "eventType");
+            correlationId = required(event, "correlationId");
+            Instant occurredAt = Instant.parse(required(event, "occurredAt"));
 
-        log.info("auditoria.evento.recebido eventId={} eventType={} contratoId={} occurredAt={} correlationId={}",
-                eventId, eventType, contratoId, occurredAt, correlationId);
-        service.registrar(eventId, contratoId, eventType, correlationId, occurredAt, payload);
+            log.info("auditoria.evento.recebido eventId={} eventType={} contratoId={} occurredAt={} correlationId={}",
+                    eventId, eventType, contratoId, occurredAt, correlationId);
+            service.registrar(UUID.fromString(eventId), UUID.fromString(contratoId), eventType,
+                    correlationId, occurredAt, payload);
+        } catch (IOException | RuntimeException exception) {
+            log.error("auditoria.evento.falha eventId={} eventType={} contratoId={} correlationId={}",
+                    eventId, eventType, contratoId, correlationId, exception);
+            throw exception;
+        }
     }
 
     private String required(JsonNode node, String field) {

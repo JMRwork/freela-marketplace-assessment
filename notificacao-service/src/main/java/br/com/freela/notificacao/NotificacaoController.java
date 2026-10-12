@@ -4,5 +4,10 @@ import org.slf4j.*; import org.springframework.web.bind.annotation.*; import jav
 public class NotificacaoController {
  private static final Logger log=LoggerFactory.getLogger(NotificacaoController.class); private final NotificacaoRepository repository;
  NotificacaoController(NotificacaoRepository r){this.repository=r;}
- @GetMapping public List<Notificacao> listar(@RequestHeader(value="X-Correlation-Id",required=false) String correlationId){log.info("http.notificacao.listar correlationId={}",correlationId);return repository.findAll();}
+ @GetMapping public List<Notificacao> listar(@RequestHeader(value="X-Correlation-Id",required=false) String correlationId){
+  log.info("http.notificacao.listar.inicio correlationId={}",correlationId);
+  var notificacoes=repository.findAll();
+  log.info("http.notificacao.listar.sucesso correlationId={} quantidade={}",correlationId,notificacoes.size());
+  return notificacoes;
+ }
 }

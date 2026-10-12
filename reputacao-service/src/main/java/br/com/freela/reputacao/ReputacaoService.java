@@ -4,17 +4,17 @@ import org.slf4j.*; import org.springframework.stereotype.Service; import org.sp
 public class ReputacaoService {
  private static final Logger log=LoggerFactory.getLogger(ReputacaoService.class); private final ReputacaoRepository repository; private final ContratoConcluidoProcessadoRepository processados;
  public ReputacaoService(ReputacaoRepository r,ContratoConcluidoProcessadoRepository processados){this.repository=r;this.processados=processados;}
- @Transactional public void registrarContratoConcluido(UUID eventId,UUID contratoId,UUID freelancerId,BigDecimal valor){
-  log.info("reputacao.evento.inicio eventId={} contratoId={} freelancerId={} valor={}",eventId,contratoId,freelancerId,valor);
+ @Transactional public void registrarContratoConcluido(UUID eventId,UUID contratoId,UUID freelancerId,BigDecimal valor,String correlationId){
+  log.info("reputacao.evento.inicio eventId={} contratoId={} freelancerId={} correlationId={}",eventId,contratoId,freelancerId,correlationId);
   if(processados.existsById(eventId)){
-   log.info("reputacao.evento.duplicado eventId={} contratoId={}",eventId,contratoId);
+   log.info("reputacao.evento.duplicado eventId={} contratoId={} correlationId={}",eventId,contratoId,correlationId);
    return;
   }
   processados.saveAndFlush(new ContratoConcluidoProcessado(eventId));
   var r=repository.findById(freelancerId).orElseGet(()->new ReputacaoFreelancer(freelancerId));
   r.registrarContrato(valor);
   repository.save(r);
-  log.info("reputacao.evento.sucesso eventId={} contratoId={} freelancerId={} contratosConcluidos={} valorTotal={}",
-   eventId,contratoId,freelancerId,r.contratosConcluidos,r.valorTotal);
+  log.info("reputacao.evento.sucesso eventId={} contratoId={} freelancerId={} contratosConcluidos={} correlationId={}",
+   eventId,contratoId,freelancerId,r.contratosConcluidos,correlationId);
  }
 }

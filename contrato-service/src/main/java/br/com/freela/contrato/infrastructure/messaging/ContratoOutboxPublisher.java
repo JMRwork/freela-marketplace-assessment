@@ -35,20 +35,26 @@ public class ContratoOutboxPublisher {
     public void publicarPendentes() {
         for (ContratoOutboxEntity event : repository.findTop100ByPublishedAtIsNullOrderByCreatedAtAsc()) {
             try {
+                log.info("contrato.evento.publicacao.inicio eventId={} eventType={} contratoId={} correlationId={} topic={} key={}",
+                        event.getEventId(), event.getEventType(), event.getContratoId(),
+                        event.getCorrelationId(), topic, event.getMessageKey());
                 kafkaTemplate.send(topic, event.getMessageKey(), event.getPayload())
                         .get(10, TimeUnit.SECONDS);
                 event.markPublished(Instant.now());
                 repository.save(event);
-                log.info("contrato.evento.publicado eventId={} contratoId={} topic={} key={}",
-                        event.getEventId(), event.getContratoId(), topic, event.getMessageKey());
+                log.info("contrato.evento.publicado eventId={} eventType={} contratoId={} correlationId={} topic={} key={}",
+                        event.getEventId(), event.getEventType(), event.getContratoId(),
+                        event.getCorrelationId(), topic, event.getMessageKey());
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
-                log.error("contrato.evento.publicacao.interrompida eventId={} contratoId={}",
-                        event.getEventId(), event.getContratoId(), exception);
+                log.error("contrato.evento.publicacao.interrompida eventId={} eventType={} contratoId={} correlationId={} topic={}",
+                        event.getEventId(), event.getEventType(), event.getContratoId(),
+                        event.getCorrelationId(), topic, exception);
                 return;
             } catch (ExecutionException | TimeoutException | RuntimeException exception) {
-                log.error("contrato.evento.publicacao.falhou eventId={} contratoId={} topic={}",
-                        event.getEventId(), event.getContratoId(), topic, exception);
+                log.error("contrato.evento.publicacao.falhou eventId={} eventType={} contratoId={} correlationId={} topic={}",
+                        event.getEventId(), event.getEventType(), event.getContratoId(),
+                        event.getCorrelationId(), topic, exception);
                 return;
             }
         }
