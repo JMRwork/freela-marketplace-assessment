@@ -25,11 +25,16 @@ public class ContratoApplicationService {
 
     @Transactional
     public Contrato criar(CriarContratoCommand cmd) {
-        return criar(cmd, null);
+        return criar(cmd, null, null);
     }
 
     @Transactional
     public Contrato criar(CriarContratoCommand cmd, String correlationId) {
+        return criar(cmd, correlationId, null);
+    }
+
+    @Transactional
+    public Contrato criar(CriarContratoCommand cmd, String correlationId, String traceparent) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("contrato.criacao.inicio correlationId={}", resolvedCorrelationId);
         Contrato contrato = Contrato.criar(cmd.clienteId(), cmd.freelancerId(), cmd.titulo(), cmd.valor());
@@ -37,7 +42,7 @@ public class ContratoApplicationService {
                 contrato.id(), contrato.status(), contrato.domainEvents().size(), resolvedCorrelationId);
         Contrato salvo = repository.salvar(contrato);
 
-        registrarEventos(contrato, resolvedCorrelationId);
+        registrarEventos(contrato, resolvedCorrelationId, traceparent);
 
         log.info("contrato.criacao.sucesso contratoId={} status={} correlationId={}",
                 salvo.id(), salvo.status(), resolvedCorrelationId);
@@ -45,18 +50,18 @@ public class ContratoApplicationService {
     }
 
     @Transactional
-    public Contrato registrarEntrega(UUID id, String correlationId) {
-        return atualizar(id, correlationId, Contrato::registrarEntrega);
+    public Contrato registrarEntrega(UUID id, String correlationId, String traceparent) {
+        return atualizar(id, correlationId, traceparent, Contrato::registrarEntrega);
     }
 
     @Transactional
-    public Contrato concluir(UUID id, String correlationId) {
-        return atualizar(id, correlationId, Contrato::concluir);
+    public Contrato concluir(UUID id, String correlationId, String traceparent) {
+        return atualizar(id, correlationId, traceparent, Contrato::concluir);
     }
 
     @Transactional
-    public Contrato cancelar(UUID id, String correlationId) {
-        return atualizar(id, correlationId, Contrato::cancelar);
+    public Contrato cancelar(UUID id, String correlationId, String traceparent) {
+        return atualizar(id, correlationId, traceparent, Contrato::cancelar);
     }
 
     @Transactional(readOnly = true)
@@ -75,22 +80,23 @@ public class ContratoApplicationService {
         return contratos;
     }
 
-    private Contrato atualizar(UUID id, String correlationId, java.util.function.Consumer<Contrato> operacao) {
+    private Contrato atualizar(UUID id, String correlationId, String traceparent,
+                               java.util.function.Consumer<Contrato> operacao) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("contrato.atualizacao.inicio contratoId={} correlationId={}", id, resolvedCorrelationId);
         Contrato contrato = repository.buscarPorId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado: " + id));
         operacao.accept(contrato);
         Contrato salvo = repository.salvar(contrato);
-        registrarEventos(contrato, resolvedCorrelationId);
+        registrarEventos(contrato, resolvedCorrelationId, traceparent);
         log.info("contrato.atualizacao.sucesso contratoId={} status={} correlationId={}",
                 salvo.id(), salvo.status(), resolvedCorrelationId);
         return salvo;
     }
 
-    private void registrarEventos(Contrato contrato, String correlationId) {
+    private void registrarEventos(Contrato contrato, String correlationId, String traceparent) {
         for (DomainEvent event : contrato.pullDomainEvents()) {
-            eventOutbox.registrar(event, correlationId);
+            eventOutbox.registrar(event, correlationId, traceparent);
             log.info("contrato.evento.outbox eventId={} eventType={} contratoId={} correlationId={}",
                     event.eventId(), event.eventType(), event.contratoId(), correlationId);
         }

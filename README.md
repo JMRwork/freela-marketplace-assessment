@@ -464,9 +464,35 @@ As transições são acionadas com `POST /api/contratos/{id}/entrega`, `POST /ap
 
 O `auditoria-service` persiste `eventId`, `eventType`, `contratoId`, `occurredAt`, `correlationId`, o payload original e o horário de recebimento. Esses campos podem ser consultados em `GET /api/auditoria`; `occurredAt` representa a data e hora do evento, enquanto `recebidoEm` indica quando a auditoria o processou.
 
-## Logs
+## Logs e tracing
 
-Todos os serviços utilizam logs em nível `INFO` com um formato comum contendo data, nível, nome da aplicação, thread, logger e mensagem. Os fluxos HTTP registram início e conclusão; o Gateway registra também falhas de transporte e o status HTTP. Os produtores e consumidores registram evento, tipo, contrato, correlação e resultado; falhas de publicação ou consumo são registradas em `ERROR` com a exceção e contexto disponível.
+Todos os serviços escrevem logs no console com data, nível, nome da aplicação, `traceId`, `spanId`, thread, logger e mensagem. Os fluxos HTTP registram início e conclusão; o Gateway registra também falhas de transporte e o status HTTP. Produtores e consumidores registram tipo do evento, contrato, `eventId`, `correlationId` e resultado. Payloads completos, título, valor e texto de notificações não são escritos nos logs.
+
+O Promtail descobre os containers Docker e encaminha seus logs para Loki. O Grafana usa Loki como fonte de dados padrão para consultas e Zipkin para visualização dos traces. Os valores `contratoId`, `eventId` e `correlationId` permanecem no conteúdo da linha (não como labels Loki de alta cardinalidade), e podem ser pesquisados sem alternar entre consoles de microsserviços.
+
+Após iniciar a infraestrutura, acesse:
+
+| Ferramenta | URL | Uso |
+|---|---|---|
+| Grafana | `http://localhost:3000` | Explore → Loki para logs; Explore → Zipkin ou Dashboards/Explore para traces. |
+| Zipkin | `http://localhost:9411` | Busca e visualização direta de traces. |
+| Loki API | `http://localhost:3100` | API HTTP do backend de logs. |
+
+O login local inicial do Grafana é `admin` / `admin`. Configure `GRAFANA_ADMIN_USER` e `GRAFANA_ADMIN_PASSWORD` antes de expor o ambiente fora da máquina local. O Loki mantém os dados por sete dias no volume `loki_data`.
+
+Exemplos de consultas LogQL no Grafana:
+
+```logql
+{service="contrato-service"} |= "correlationId=f973e469-4fc5-4710-b0d4-559f3c39bf84"
+{service=~".+"} |= "contratoId=4dfb2880-082b-41e8-9c88-750e6f75f77b"
+{service=~".+"} |= "eventId=1ca6f947-1424-4eac-8978-bfc2ddbc988e"
+```
+
+O Micrometer Tracing usa a ponte Brave e exporta spans para Zipkin por HTTP. O Gateway propaga o contexto W3C (`traceparent`) nas chamadas; o `contrato-service` persiste o header recebido na outbox e o publica como header Kafka. Os listeners Kafka têm observação habilitada e continuam o trace recebido. `traceId` e `spanId` são adicionados ao padrão MDC dos logs. O `correlationId` da aplicação continua sendo propagado separadamente para consulta funcional.
+
+O sampling padrão é 100% para facilitar o assessment local. Em outros ambientes, configure `TRACING_SAMPLING_PROBABILITY` entre `0.0` e `1.0`. O endpoint de exportação pode ser substituído por `ZIPKIN_ENDPOINT` (default `http://localhost:9411/api/v2/spans` nas aplicações locais; dentro da rede Docker, use `http://zipkin:9411/api/v2/spans`).
+
+Dependências de tracing foram adicionadas aos seis aplicativos Spring. A configuração do pipeline de logs e das fontes do Grafana está em `infra/promtail-config.yml`, `infra/loki-config.yml` e `infra/grafana-datasources.yml`.
 
 Exemplo:
 

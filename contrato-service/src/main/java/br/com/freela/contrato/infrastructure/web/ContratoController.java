@@ -19,10 +19,11 @@ public class ContratoController {
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public ContratoResponse criar(@RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
+                                   @RequestHeader(value="traceparent", required=false) String traceparent,
                                    @Valid @RequestBody CriarContratoRequest request) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.criar.inicio correlationId={}", resolvedCorrelationId);
-        var c = service.criar(new CriarContratoCommand(request.clienteId(), request.freelancerId(), request.titulo(), request.valor()), resolvedCorrelationId);
+        var c = service.criar(new CriarContratoCommand(request.clienteId(), request.freelancerId(), request.titulo(), request.valor()), resolvedCorrelationId, traceparent);
         log.info("http.contrato.criar.sucesso correlationId={} contratoId={} status={}", resolvedCorrelationId, c.id(), c.status());
         return ContratoResponse.from(c);
     }
@@ -30,10 +31,11 @@ public class ContratoController {
     @PostMapping("/{id}/entrega")
     public ContratoResponse registrarEntrega(
             @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
+            @RequestHeader(value="traceparent", required=false) String traceparent,
             @PathVariable UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.entrega.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
-        var contrato = service.registrarEntrega(id, resolvedCorrelationId);
+        var contrato = service.registrarEntrega(id, resolvedCorrelationId, traceparent);
         log.info("http.contrato.entrega.sucesso correlationId={} contratoId={} status={}",
                 resolvedCorrelationId, id, contrato.status());
         return ContratoResponse.from(contrato);
@@ -42,10 +44,11 @@ public class ContratoController {
     @PostMapping("/{id}/conclusao")
     public ContratoResponse concluir(
             @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
+            @RequestHeader(value="traceparent", required=false) String traceparent,
             @PathVariable UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.conclusao.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
-        var contrato = service.concluir(id, resolvedCorrelationId);
+        var contrato = service.concluir(id, resolvedCorrelationId, traceparent);
         log.info("http.contrato.conclusao.sucesso correlationId={} contratoId={} status={}",
                 resolvedCorrelationId, id, contrato.status());
         return ContratoResponse.from(contrato);
@@ -54,10 +57,11 @@ public class ContratoController {
     @PostMapping("/{id}/cancelamento")
     public ContratoResponse cancelar(
             @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
+            @RequestHeader(value="traceparent", required=false) String traceparent,
             @PathVariable UUID id) {
         String resolvedCorrelationId = resolveCorrelationId(correlationId);
         log.info("http.contrato.cancelamento.inicio correlationId={} contratoId={}", resolvedCorrelationId, id);
-        var contrato = service.cancelar(id, resolvedCorrelationId);
+        var contrato = service.cancelar(id, resolvedCorrelationId, traceparent);
         log.info("http.contrato.cancelamento.sucesso correlationId={} contratoId={} status={}",
                 resolvedCorrelationId, id, contrato.status());
         return ContratoResponse.from(contrato);

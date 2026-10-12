@@ -58,8 +58,60 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
     networks: [freela-net]
 
+  zipkin:
+    image: openzipkin/zipkin:3.5.1
+    container_name: freela-zipkin
+    ports:
+      - "9411:9411"
+    networks: [freela-net]
+
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: freela-loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    networks: [freela-net]
+
+  promtail:
+    image: grafana/promtail:3.5.0
+    container_name: freela-promtail
+    command: ["-config.file=/etc/promtail/config.yml"]
+    depends_on:
+      loki:
+        condition: service_started
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - promtail_positions:/var/lib/promtail
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [freela-net]
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: freela-grafana
+    depends_on:
+      loki:
+        condition: service_started
+      zipkin:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    networks: [freela-net]
+
 volumes:
   postgres_data:
+  loki_data:
+  promtail_positions:
+  grafana_data:
 
 networks:
   freela-net:

@@ -20,6 +20,9 @@ public class ContratoOutboxEntity {
 
     private String correlationId;
 
+    @Column(length = 55)
+    private String traceparent;
+
     @Column(nullable = false, length = 200)
     private String messageKey;
 
@@ -34,11 +37,13 @@ public class ContratoOutboxEntity {
     protected ContratoOutboxEntity() {}
 
     public ContratoOutboxEntity(UUID eventId, UUID contratoId, String eventType,
-                                String correlationId, String payload, Instant createdAt) {
+                                String correlationId, String traceparent,
+                                String payload, Instant createdAt) {
         this.eventId = eventId;
         this.contratoId = contratoId;
         this.eventType = eventType;
         this.correlationId = correlationId;
+        this.traceparent = traceparent;
         this.messageKey = contratoId.toString();
         this.payload = payload;
         this.createdAt = createdAt;
@@ -52,6 +57,7 @@ public class ContratoOutboxEntity {
     public UUID getContratoId() { return contratoId; }
     public String getEventType() { return eventType; }
     public String getCorrelationId() { return correlationId; }
+    public String getTraceparent() { return traceparent; }
     public String getMessageKey() { return messageKey; }
     public String getPayload() { return payload; }
     public Instant getCreatedAt() { return createdAt; }

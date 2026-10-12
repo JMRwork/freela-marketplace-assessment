@@ -4,6 +4,12 @@ spring:
   application:
     name: eureka-server
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
   endpoints:
     web:
       exposure:
@@ -19,7 +25,7 @@ eureka:
     enable-self-preservation: false
 logging:
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level service=${spring.application.name} thread=%thread logger=%logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level service=${spring.application.name} traceId=%X{traceId} spanId=%X{spanId} thread=%thread logger=%logger{36} - %msg%n"
   level:
     root: INFO
     com.netflix.eureka: INFO

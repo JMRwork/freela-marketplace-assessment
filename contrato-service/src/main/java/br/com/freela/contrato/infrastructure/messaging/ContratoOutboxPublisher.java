@@ -2,10 +2,12 @@ package br.com.freela.contrato.infrastructure.messaging;
 
 import br.com.freela.contrato.infrastructure.persistence.ContratoOutboxEntity;
 import br.com.freela.contrato.infrastructure.persistence.ContratoOutboxRepository;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,8 +40,12 @@ public class ContratoOutboxPublisher {
                 log.info("contrato.evento.publicacao.inicio eventId={} eventType={} contratoId={} correlationId={} topic={} key={}",
                         event.getEventId(), event.getEventType(), event.getContratoId(),
                         event.getCorrelationId(), topic, event.getMessageKey());
-                kafkaTemplate.send(topic, event.getMessageKey(), event.getPayload())
-                        .get(10, TimeUnit.SECONDS);
+                var record = new ProducerRecord<>(topic, event.getMessageKey(), event.getPayload());
+                if (event.getTraceparent() != null) {
+                    record.headers().add("traceparent",
+                            event.getTraceparent().getBytes(StandardCharsets.US_ASCII));
+                }
+                kafkaTemplate.send(record).get(10, TimeUnit.SECONDS);
                 event.markPublished(Instant.now());
                 repository.save(event);
                 log.info("contrato.evento.publicado eventId={} eventType={} contratoId={} correlationId={} topic={} key={}",
