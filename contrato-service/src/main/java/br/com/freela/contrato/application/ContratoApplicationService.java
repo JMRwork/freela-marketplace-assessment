@@ -4,6 +4,8 @@ import br.com.freela.contrato.domain.model.Contrato;
 import br.com.freela.contrato.domain.repository.ContratoRepository;
 import br.com.freela.contrato.domain.shared.DomainEvent;
 import br.com.freela.contrato.infrastructure.messaging.ContratoEventOutbox;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,10 +19,13 @@ public class ContratoApplicationService {
     private static final Logger log = LoggerFactory.getLogger(ContratoApplicationService.class);
     private final ContratoRepository repository;
     private final ContratoEventOutbox eventOutbox;
+    private final Tracer tracer;
 
-    public ContratoApplicationService(ContratoRepository repository, ContratoEventOutbox eventOutbox) {
+    public ContratoApplicationService(ContratoRepository repository, ContratoEventOutbox eventOutbox,
+                                      Tracer tracer) {
         this.repository = repository;
         this.eventOutbox = eventOutbox;
+        this.tracer = tracer;
     }
 
     @Transactional
@@ -42,7 +47,7 @@ public class ContratoApplicationService {
                 contrato.id(), contrato.status(), contrato.domainEvents().size(), resolvedCorrelationId);
         Contrato salvo = repository.salvar(contrato);
 
-        registrarEventos(contrato, resolvedCorrelationId, traceparent);
+        registrarEventos(contrato, resolvedCorrelationId, traceparentAtual(traceparent));
 
         log.info("contrato.criacao.sucesso contratoId={} status={} correlationId={}",
                 salvo.id(), salvo.status(), resolvedCorrelationId);
@@ -88,7 +93,7 @@ public class ContratoApplicationService {
                 .orElseThrow(() -> new IllegalArgumentException("Contrato não encontrado: " + id));
         operacao.accept(contrato);
         Contrato salvo = repository.salvar(contrato);
-        registrarEventos(contrato, resolvedCorrelationId, traceparent);
+        registrarEventos(contrato, resolvedCorrelationId, traceparentAtual(traceparent));
         log.info("contrato.atualizacao.sucesso contratoId={} status={} correlationId={}",
                 salvo.id(), salvo.status(), resolvedCorrelationId);
         return salvo;
@@ -106,5 +111,25 @@ public class ContratoApplicationService {
         return correlationId == null || correlationId.isBlank()
                 ? UUID.randomUUID().toString()
                 : correlationId.trim();
+    }
+
+    private String traceparentAtual(String fallback) {
+        Span currentSpan = tracer.currentSpan();
+        if (currentSpan == null) {
+            return fallback;
+        }
+
+        var context = currentSpan.context();
+        String traceId = context.traceId();
+        if (traceId.length() == 16) {
+            traceId = "0000000000000000" + traceId;
+        }
+        if (traceId.length() != 32 || context.spanId().length() != 16) {
+            log.warn("contrato.trace.contexto.invalido traceIdLength={} spanIdLength={}",
+                    traceId.length(), context.spanId().length());
+            return fallback;
+        }
+        String sampledFlag = Boolean.TRUE.equals(context.sampled()) ? "01" : "00";
+        return "00-" + traceId + "-" + context.spanId() + "-" + sampledFlag;
     }
 }

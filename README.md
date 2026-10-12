@@ -1,388 +1,112 @@
 # Freela Marketplace
 
-Projeto de referência para um marketplace de contratação de freelancers construído com arquitetura de microsserviços em Java e Spring.
-
-A aplicação representa um cenário em que clientes contratam freelancers para a execução de trabalhos. O núcleo do sistema é o gerenciamento dos contratos firmados entre as partes. A partir desse domínio, outros serviços mantêm informações relacionadas a notificações, reputação e auditoria.
-
-## Visão geral
-
-O sistema é composto por seis aplicações Spring Boot:
-
-- `eureka-server`: registro e descoberta dos serviços.
-- `api-gateway`: ponto de entrada HTTP da aplicação.
-- `contrato-service`: gerenciamento dos contratos entre clientes e freelancers.
-- `notificacao-service`: armazenamento das notificações relacionadas aos contratos.
-- `reputacao-service`: manutenção de informações agregadas sobre os freelancers.
-- `auditoria-service`: registro de eventos relevantes do sistema.
-
-A infraestrutura local utiliza PostgreSQL e Apache Kafka.
-
-```text
-                         +-------------------+
-                         |      Cliente      |
-                         +---------+---------+
-                                   |
-                                   | HTTP
-                                   v
-                         +-------------------+
-                         |    API Gateway    |
-                         |       :8080       |
-                         +---------+---------+
-                                   |
-                     Service Discovery / Eureka
-                                   |
-                +------------------+------------------+
-                |                  |                  |
-                v                  v                  v
-       +----------------+  +----------------+  +----------------+
-       | contrato       |  | notificacao    |  | reputacao      |
-       | service :8081  |  | service :8082  |  | service :8083  |
-       +----------------+  +----------------+  +----------------+
-                |
-                |                       +----------------+
-                +---------------------->| auditoria      |
-                                        | service :8084  |
-                                        +----------------+
-
-                          +-------------------+
-                          |       Kafka       |
-                          |       :9092       |
-                          +-------------------+
-
-                          +-------------------+
-                          |    PostgreSQL     |
-                          |       :5432       |
-                          +-------------------+
-```
-
-## Domínio
-
-O domínio principal está no `contrato-service`.
-
-Um contrato representa o vínculo entre um cliente e um freelancer para a execução de um trabalho. Cada contrato possui:
-
-- identificador;
-- cliente;
-- freelancer;
-- título do trabalho;
-- valor;
-- status;
-- data de criação.
-
-Os estados disponíveis são:
-
-```text
-ATIVO
-ENTREGA_REGISTRADA
-CONCLUIDO
-CANCELADO
-```
-
-O fluxo de negócio previsto pelo modelo é:
-
-```text
-ATIVO
-  |
-  v
-ENTREGA_REGISTRADA
-  |
-  v
-CONCLUIDO
-```
-
-Um contrato ativo também pode ser cancelado.
-
-O `contrato-service` utiliza uma organização inspirada em Domain-Driven Design, separando domínio, aplicação e infraestrutura.
-
-```text
-contrato-service
-└── src/main/java/br/com/freela/contrato
-    ├── application
-    ├── domain
-    │   ├── event
-    │   ├── model
-    │   ├── repository
-    │   └── shared
-    └── infrastructure
-        ├── persistence
-        └── web
-```
-
-O Aggregate `Contrato` concentra as regras relacionadas às mudanças de estado e produz eventos de domínio para criação, registro de entrega, conclusão e cancelamento.
+Marketplace de freelancers desenvolvido em Java 21, Spring Boot e arquitetura de microsserviços. O serviço de contratos publica eventos no Kafka; notificações, reputação e auditoria os processam de forma independente.
 
 ## Serviços
 
-### contrato-service
+| Serviço | Responsabilidade | Porta |
+|---|---|---:|
+| `api-gateway` | Entrada HTTP e roteamento | 8080 |
+| `contrato-service` | Criar e atualizar contratos | 8081 |
+| `notificacao-service` | Registrar notificações | 8082 |
+| `reputacao-service` | Atualizar histórico do freelancer | 8083 |
+| `auditoria-service` | Armazenar eventos recebidos | 8084 |
+| `eureka-server` | Descoberta de serviços | 8761 |
 
-Responsável pelo ciclo de vida dos contratos.
+O PostgreSQL usa a porta `5432`; Kafka, `9092`; Kafka UI, `8090`. A interface do Eureka fica em `http://localhost:8761`.
 
-Porta:
+## Iniciar infraestrutura
 
-```text
-8081
+É necessário ter Docker e Docker Compose instalados. Na raiz do projeto:
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
 ```
 
-Banco:
+Confira os containers:
 
-```text
-contrato_db
+```bash
+docker compose -f infra/docker-compose.yml ps
 ```
 
-Principais recursos HTTP:
+Para encerrar:
 
-```text
-POST /api/contratos
-GET  /api/contratos
-GET  /api/contratos/{id}
-POST /api/contratos/{id}/entrega
-POST /api/contratos/{id}/conclusao
-POST /api/contratos/{id}/cancelamento
+```bash
+docker compose -f infra/docker-compose.yml down
 ```
 
-Exemplo de criação de contrato:
+Para remover também os dados persistidos:
 
-```json
-{
-  "clienteId": "11111111-1111-1111-1111-111111111111",
-  "freelancerId": "22222222-2222-2222-2222-222222222222",
-  "titulo": "Construção de API de pagamentos",
-  "valor": 3500.00
-}
+```bash
+docker compose -f infra/docker-compose.yml down -v
 ```
 
-### notificacao-service
+O PostgreSQL cria um banco separado para cada serviço. Kafka funciona em modo KRaft, sem ZooKeeper. O Kafka UI fica em `http://localhost:8090`.
 
-Mantém notificações relacionadas aos acontecimentos do marketplace.
+## Iniciar aplicações
 
-Porta:
+Com Maven instalado, abra um terminal na raiz do projeto e inicie cada módulo em um terminal separado:
 
-```text
-8082
+```bash
+mvn -pl eureka-server spring-boot:run
+mvn -pl api-gateway spring-boot:run
+mvn -pl contrato-service spring-boot:run
+mvn -pl notificacao-service spring-boot:run
+mvn -pl reputacao-service spring-boot:run
+mvn -pl auditoria-service spring-boot:run
 ```
 
-Banco:
+As aplicações locais usam por padrão `localhost` para PostgreSQL, Kafka e Eureka. Os endereços podem ser alterados pelas variáveis `DB_URL`, `KAFKA_BOOTSTRAP_SERVERS` e `EUREKA_URL`.
 
-```text
-notificacao_db
-```
+## Contratos
 
-As notificações armazenam informações como contrato, destinatário, tipo, mensagem e momento de criação.
+O contrato começa em `ATIVO`. A entrega muda o status para `ENTREGA_REGISTRADA`, e a conclusão muda para `CONCLUIDO`. Um contrato ainda não concluído pode ser cancelado.
 
-### reputacao-service
-
-Mantém informações agregadas sobre a atividade dos freelancers.
-
-Porta:
-
-```text
-8083
-```
-
-Banco:
-
-```text
-reputacao_db
-```
-
-Para cada freelancer são mantidos dados como quantidade de contratos concluídos e valor total dos contratos registrados.
-
-Endpoint disponível para consulta:
-
-```text
-GET /api/reputacoes
-```
-
-### auditoria-service
-
-Responsável pelo armazenamento de registros associados aos eventos do sistema.
-
-Porta:
-
-```text
-8084
-```
-
-Banco:
-
-```text
-auditoria_db
-```
-
-Cada registro de auditoria pode armazenar:
-
-- `eventId`;
-- `aggregateId`;
-- tipo do evento;
-- `correlationId`;
-- payload original;
-- horário de recebimento.
-
-Endpoint disponível para consulta:
-
-```text
-GET /api/auditoria
-```
-
-## API Gateway
-
-O `api-gateway` é o ponto de entrada HTTP para os microsserviços.
-
-Porta:
-
-```text
-8080
-```
-
-As rotas configuradas são:
-
-| Caminho | Serviço |
+| Operação | Endpoint |
 |---|---|
-| `/api/contratos/**` | `contrato-service` |
-| `/api/notificacoes/**` | `notificacao-service` |
-| `/api/reputacoes/**` | `reputacao-service` |
-| `/api/auditoria/**` | `auditoria-service` |
+| Criar contrato | `POST /api/contratos` |
+| Listar contratos | `GET /api/contratos` |
+| Consultar contrato | `GET /api/contratos/{id}` |
+| Registrar entrega | `POST /api/contratos/{id}/entrega` |
+| Concluir contrato | `POST /api/contratos/{id}/conclusao` |
+| Cancelar contrato | `POST /api/contratos/{id}/cancelamento` |
 
-O Gateway utiliza Eureka para localizar as instâncias dos serviços.
+As rotas também estão disponíveis através do Gateway na porta `8080`.
 
-Também existe suporte ao header:
+Exemplo de criação:
 
-```text
-X-Correlation-Id
+```bash
+curl -X POST http://localhost:8080/api/contratos \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-Id: teste-contrato-001" \
+  -d '{
+    "clienteId": "11111111-1111-1111-1111-111111111111",
+    "freelancerId": "22222222-2222-2222-2222-222222222222",
+    "titulo": "Construção de API de pagamentos",
+    "valor": 3500.00
+  }'
 ```
 
-Quando o header não é enviado pelo cliente, o Gateway gera automaticamente um UUID e o encaminha para o serviço de destino.
+O Gateway gera um `X-Correlation-Id` se a chamada não enviar um.
 
-## Eureka Server
+## Eventos Kafka
 
-O Eureka Server mantém o registro das aplicações disponíveis no ambiente.
+O produtor grava cada evento na outbox do `contrato-service`, na mesma transação da alteração do contrato. Um processo em segundo plano publica os eventos na confirmação do Kafka. Se houver falha, a outbox permite nova tentativa; por isso os consumidores tratam duplicatas.
 
-Porta:
+| Tópico | Produtor | Chave | Partições |
+|---|---|---|---:|
+| `freela.contrato.eventos.v1` | `contrato-service` | `contratoId` | 3 |
 
-```text
-8761
-```
+| Evento | Consumidores |
+|---|---|
+| `ContratoCriado` | Notificações, auditoria |
+| `EntregaRegistrada` | Notificações, auditoria |
+| `ContratoConcluido` | Notificações, reputação, auditoria |
+| `ContratoCancelado` | Notificações, auditoria |
 
-Interface web:
+Notificações são registradas para cliente e freelancer na criação, conclusão e cancelamento; a entrega notifica o cliente. Reputação é atualizada na conclusão. Auditoria registra todos os eventos.
 
-```text
-http://localhost:8761
-```
-
-Os microsserviços utilizam, por padrão:
-
-```text
-http://localhost:8761/eureka/
-```
-
-como endereço do service registry.
-
-## PostgreSQL
-
-O ambiente utiliza uma única instância PostgreSQL com bancos separados para cada serviço.
-
-```text
-Host:     localhost
-Porta:    5432
-Usuário:  freela
-Senha:    freela
-```
-
-Bancos criados durante a inicialização:
-
-```text
-contrato_db
-notificacao_db
-reputacao_db
-auditoria_db
-```
-
-O script de criação dos bancos está em:
-
-```text
-infra/postgres/init-databases.sql
-```
-
-Os serviços utilizam Hibernate com `ddl-auto: update` para criação e atualização das tabelas locais.
-
-## Apache Kafka
-
-O Apache Kafka é executado em modo KRaft, sem ZooKeeper.
-
-Para aplicações executadas diretamente na máquina:
-
-```text
-localhost:9092
-```
-
-Para aplicações executadas dentro da rede Docker:
-
-```text
-kafka:19092
-```
-
-O broker possui listeners separados para comunicação interna e externa.
-
-O ambiente também inclui o Kafka UI.
-
-```text
-http://localhost:8090
-```
-
-### Eventos do ciclo de vida dos contratos
-
-O `contrato-service` grava os eventos na tabela `contrato_event_outbox` na mesma transação que persiste o contrato. Um publicador em background envia as mensagens pendentes para Kafka usando `contratoId` como chave. A mensagem só é marcada como publicada após confirmação do broker; falhas permanecem na outbox para nova tentativa. Uma falha depois da confirmação do Kafka e antes da atualização da outbox pode publicar o evento novamente; portanto, os consumidores são idempotentes usando `eventId`.
-
-#### Idempotência dos consumidores
-
-Cada consumidor verifica o identificador antes de executar o efeito e persiste o resultado e a chave idempotente dentro de uma transação local. Restrições únicas no banco são a proteção final contra duas entregas concorrentes do mesmo evento; o marcador e os efeitos são confirmados ou revertidos juntos. Após uma falha durante a transação, a mensagem pode ser reentregue e processada sem duplicar os efeitos:
-
-| Serviço | Chave idempotente persistida | Efeito protegido |
-|---|---|---|
-| `notificacao-service` | `(eventId, destinatarioId)`, com restrição única em `notificacoes` | Uma notificação por destinatário para cada evento. A chave composta permite notificar ambos os participantes sem duplicar nenhuma notificação. |
-| `reputacao-service` | `eventId` como chave primária de `reputacao_eventos_processados` | O registro processado e a atualização da contagem/valor são gravados na mesma transação. |
-| `auditoria-service` | `eventId` único em `auditoria_eventos` | Um único registro de auditoria por evento. |
-
-Uma repetição já persistida é reconhecida e ignorada. Se duas instâncias disputarem a mesma mensagem, a restrição única impede o segundo efeito; qualquer erro de persistência aborta sua transação em vez de confirmar um efeito parcial. A confirmação do offset ocorre somente depois que o listener termina; se a transação falhar, a mensagem permanece elegível para reprocessamento conforme a política do consumidor.
-
-| Tópico | Produtor | Consumidores | Partições | Chave |
-|---|---|---|---:|---|
-| `freela.contrato.eventos.v1` | `contrato-service` | `notificacao-service`, `reputacao-service`, `auditoria-service` | 3 | `contratoId` |
-
-O particionamento por `contratoId` mantém os eventos de um mesmo contrato na mesma partição. O publicador da outbox lê os registros em ordem de criação e aguarda a confirmação de cada envio antes de enviar o próximo; o produtor também usa `acks=all` e idempotência habilitada. No consumo, Kafka atribui cada partição a somente um consumidor por grupo e o listener processa seus registros sincronamente, sem despacho assíncrono paralelo dentro da partição. Assim, a ordem é preservada para cada contrato, enquanto partições diferentes podem ser processadas em paralelo.
-
-O tópico tem três partições e cada serviço consumidor usa concorrência três por padrão (`KAFKA_CONSUMER_CONCURRENCY`). Isso permite até três consumidores ativos por grupo, em paralelo para partições diferentes; contratos distintos podem cair na mesma partição e então são processados em sequência. Não aumente o número de partições de um tópico já em uso sem planejar a migração: o mapeamento de uma chave pode mudar e registros antigos e novos do mesmo contrato podem ficar em partições diferentes. Os três consumidores usam grupos próprios, permitindo que cada serviço receba todos os eventos. Notificações são geradas para ambos os participantes em criação, conclusão e cancelamento, e para o cliente quando uma entrega é registrada. Reputação reage somente à conclusão. Auditoria registra todos os eventos.
-
-#### Contrato de mensagem
-
-Todos os eventos são mensagens JSON no tópico `freela.contrato.eventos.v1`. O produtor é o `contrato-service`; a chave Kafka é o UUID de `contratoId` codificado como string UTF-8. Essa chave mantém eventos do mesmo contrato na mesma partição.
-
-| Campo | Tipo | Obrigatório | Descrição |
-|---|---|---|---|
-| `eventId` | UUID | Sim | Identificador único do evento, usado na deduplicação. |
-| `eventType` | string | Sim | Nome do evento; valores listados na tabela abaixo. |
-| `aggregateType` | string | Sim | Tipo do agregado; sempre `Contrato`. |
-| `contratoId` | UUID | Sim | Identificador do contrato e chave Kafka. |
-| `occurredAt` | string ISO-8601 UTC | Sim | Data e hora em que a transição ocorreu. |
-| `correlationId` | UUID/string | Sim | Correlação recebida em `X-Correlation-Id` ou gerada pelo produtor. |
-| `data.clienteId` | UUID | Sim | Cliente associado ao contrato. |
-| `data.freelancerId` | UUID | Sim | Freelancer associado ao contrato. |
-| `data.titulo` | string | Sim | Título do contrato. |
-| `data.valor` | decimal | Sim | Valor monetário do contrato. |
-
-`eventId`, `occurredAt` e `contratoId` aparecem apenas no envelope, não dentro de `data`.
-
-| Nome do evento (`eventType`) | Produtor | Consumidores | Dados específicos |
-|---|---|---|---|
-| `ContratoCriado` | `contrato-service` | `notificacao-service` (notifica cliente e freelancer), `auditoria-service` | Campos comuns de `data`. |
-| `EntregaRegistrada` | `contrato-service` | `notificacao-service` (notifica cliente), `auditoria-service` | Campos comuns de `data`. |
-| `ContratoConcluido` | `contrato-service` | `notificacao-service` (notifica cliente e freelancer), `reputacao-service`, `auditoria-service` | Campos comuns de `data`; reputação incrementa o histórico do freelancer pelo valor. |
-| `ContratoCancelado` | `contrato-service` | `notificacao-service` (notifica cliente e freelancer), `auditoria-service` | Campos comuns de `data`. |
-
-#### Exemplos de mensagens
-
-Os exemplos usam IDs fictícios. Em todos eles, envie a chave Kafka `4dfb2880-082b-41e8-9c88-750e6f75f77b` e o payload JSON mostrado.
-
-`ContratoCriado`:
+Todas as mensagens usam o mesmo envelope JSON:
 
 ```json
 {
@@ -401,265 +125,47 @@ Os exemplos usam IDs fictícios. Em todos eles, envie a chave Kafka `4dfb2880-08
 }
 ```
 
-`EntregaRegistrada` (envelope idêntico; cada ocorrência tem seu próprio `eventId` e `occurredAt`):
+Em cada evento:
 
-```json
-{
-  "eventId": "3a1e0c06-b149-4a71-baf8-4f09a5886900",
-  "eventType": "EntregaRegistrada",
-  "aggregateType": "Contrato",
-  "contratoId": "4dfb2880-082b-41e8-9c88-750e6f75f77b",
-  "occurredAt": "2026-10-11T14:30:00Z",
-  "correlationId": "f973e469-4fc5-4710-b0d4-559f3c39bf84",
-  "data": {
-    "clienteId": "11111111-1111-1111-1111-111111111111",
-    "freelancerId": "22222222-2222-2222-2222-222222222222",
-    "titulo": "Construção de API de pagamentos",
-    "valor": 3500.00
-  }
-}
-```
+- `eventId` identifica unicamente a mensagem.
+- `eventType` informa qual operação ocorreu.
+- `contratoId` também é a chave Kafka.
+- `occurredAt` registra quando o evento aconteceu.
+- `correlationId` relaciona a operação entre serviços.
+- `data` contém cliente, freelancer, título e valor do contrato.
 
-`ContratoConcluido`:
+A chave `contratoId` mantém os eventos de um mesmo contrato na mesma partição e preserva sua ordem. Partições diferentes podem ser processadas em paralelo. A concorrência padrão de cada consumidor é três e pode ser alterada com `KAFKA_CONSUMER_CONCURRENCY`.
 
-```json
-{
-  "eventId": "47bdc4c5-8d8b-4266-a9c3-30d3f190e1f4",
-  "eventType": "ContratoConcluido",
-  "aggregateType": "Contrato",
-  "contratoId": "4dfb2880-082b-41e8-9c88-750e6f75f77b",
-  "occurredAt": "2026-10-12T16:00:00Z",
-  "correlationId": "f973e469-4fc5-4710-b0d4-559f3c39bf84",
-  "data": {
-    "clienteId": "11111111-1111-1111-1111-111111111111",
-    "freelancerId": "22222222-2222-2222-2222-222222222222",
-    "titulo": "Construção de API de pagamentos",
-    "valor": 3500.00
-  }
-}
-```
+Os consumidores usam `eventId` para evitar efeitos duplicados. Notificações usam também o destinatário na chave, para permitir uma notificação por participante. Auditoria e reputação persistem o identificador processado junto com seus efeitos.
 
-`ContratoCancelado`:
+O tópico pode ser alterado com `CONTRATO_EVENTOS_TOPIC`.
 
-```json
-{
-  "eventId": "91826c71-44fa-4748-a24f-256c3a0a2f82",
-  "eventType": "ContratoCancelado",
-  "aggregateType": "Contrato",
-  "contratoId": "4dfb2880-082b-41e8-9c88-750e6f75f77b",
-  "occurredAt": "2026-10-12T16:30:00Z",
-  "correlationId": "f973e469-4fc5-4710-b0d4-559f3c39bf84",
-  "data": {
-    "clienteId": "11111111-1111-1111-1111-111111111111",
-    "freelancerId": "22222222-2222-2222-2222-222222222222",
-    "titulo": "Construção de API de pagamentos",
-    "valor": 3500.00
-  }
-}
-```
+## Consultas dos serviços
 
-Para manter a correlação, as chamadas HTTP podem enviar `X-Correlation-Id`; quando ausente, o serviço gera um UUID. O tópico pode ser substituído por `CONTRATO_EVENTOS_TOPIC`; os endereços de bootstrap seguem `KAFKA_BOOTSTRAP_SERVERS`.
+| Serviço | Endpoint |
+|---|---|
+| Notificações | `GET /api/notificacoes` |
+| Reputação | `GET /api/reputacoes` |
+| Auditoria | `GET /api/auditoria` |
 
-As transições são acionadas com `POST /api/contratos/{id}/entrega`, `POST /api/contratos/{id}/conclusao` e `POST /api/contratos/{id}/cancelamento`. Exemplo: após criar o contrato, registre a entrega e conclua-o para publicar os eventos correspondentes.
-
-O `auditoria-service` persiste `eventId`, `eventType`, `contratoId`, `occurredAt`, `correlationId`, o payload original e o horário de recebimento. Esses campos podem ser consultados em `GET /api/auditoria`; `occurredAt` representa a data e hora do evento, enquanto `recebidoEm` indica quando a auditoria o processou.
+Os endpoints estão disponíveis pelo Gateway ou diretamente na porta do serviço correspondente.
 
 ## Logs e tracing
 
-Todos os serviços escrevem logs no console com data, nível, nome da aplicação, `traceId`, `spanId`, thread, logger e mensagem. Os fluxos HTTP registram início e conclusão; o Gateway registra também falhas de transporte e o status HTTP. Produtores e consumidores registram tipo do evento, contrato, `eventId`, `correlationId` e resultado. Payloads completos, título, valor e texto de notificações não são escritos nos logs.
+Os seis serviços enviam logs diretamente ao Loki. Acesse o Grafana em `http://localhost:3000` e selecione **Explore → Loki** para pesquisar logs por `service`, `contratoId`, `eventId` ou `correlationId`.
 
-O Promtail descobre os containers Docker e encaminha seus logs para Loki. O Grafana usa Loki como fonte de dados padrão para consultas e Zipkin para visualização dos traces. Os valores `contratoId`, `eventId` e `correlationId` permanecem no conteúdo da linha (não como labels Loki de alta cardinalidade), e podem ser pesquisados sem alternar entre consoles de microsserviços.
+> Sem Promtail, os logs dos containers de infraestrutura, como PostgreSQL e Kafka, não são enviados ao Loki. Se Loki estiver indisponível, os serviços Spring não mantêm uma cópia dos logs no console.
 
-Após iniciar a infraestrutura, acesse:
+Grafana:
 
-| Ferramenta | URL | Uso |
-|---|---|---|
-| Grafana | `http://localhost:3000` | Explore → Loki para logs; Explore → Zipkin ou Dashboards/Explore para traces. |
-| Zipkin | `http://localhost:9411` | Busca e visualização direta de traces. |
-| Loki API | `http://localhost:3100` | API HTTP do backend de logs. |
+- URL: `http://localhost:3000`
+- Login local inicial: `admin` / `admin`
+- Altere `GRAFANA_ADMIN_USER` e `GRAFANA_ADMIN_PASSWORD` antes de expor o ambiente.
 
-O login local inicial do Grafana é `admin` / `admin`. Configure `GRAFANA_ADMIN_USER` e `GRAFANA_ADMIN_PASSWORD` antes de expor o ambiente fora da máquina local. O Loki mantém os dados por sete dias no volume `loki_data`.
+O tracing usa Micrometer/Brave e exporta os traces para Zipkin em `http://localhost:9411`. No Grafana, selecione **Explore → Zipkin**; a interface do Zipkin também está disponível diretamente. O contexto segue do Gateway para o serviço de contratos e, pelo header Kafka, aos consumidores.
 
-Exemplos de consultas LogQL no Grafana:
-
-```logql
-{service="contrato-service"} |= "correlationId=f973e469-4fc5-4710-b0d4-559f3c39bf84"
-{service=~".+"} |= "contratoId=4dfb2880-082b-41e8-9c88-750e6f75f77b"
-{service=~".+"} |= "eventId=1ca6f947-1424-4eac-8978-bfc2ddbc988e"
-```
-
-O Micrometer Tracing usa a ponte Brave e exporta spans para Zipkin por HTTP. O Gateway propaga o contexto W3C (`traceparent`) nas chamadas; o `contrato-service` persiste o header recebido na outbox e o publica como header Kafka. Os listeners Kafka têm observação habilitada e continuam o trace recebido. `traceId` e `spanId` são adicionados ao padrão MDC dos logs. O `correlationId` da aplicação continua sendo propagado separadamente para consulta funcional.
-
-O sampling padrão é 100% para facilitar o assessment local. Em outros ambientes, configure `TRACING_SAMPLING_PROBABILITY` entre `0.0` e `1.0`. O endpoint de exportação pode ser substituído por `ZIPKIN_ENDPOINT` (default `http://localhost:9411/api/v2/spans` nas aplicações locais; dentro da rede Docker, use `http://zipkin:9411/api/v2/spans`).
-
-Dependências de tracing foram adicionadas aos seis aplicativos Spring. A configuração do pipeline de logs e das fontes do Grafana está em `infra/promtail-config.yml`, `infra/loki-config.yml` e `infra/grafana-datasources.yml`.
-
-Exemplo:
-
-```text
-2026-09-14 14:42:18.431 INFO service=contrato-service thread=http-nio-8081-exec-1 logger=b.c.f.c.a.ContratoApplicationService - contrato.criacao.inicio clienteId=... freelancerId=...
-```
-
-O código registra pontos importantes do fluxo, incluindo:
-
-```text
-gateway.request.inicio
-gateway.request.falha
-gateway.request.fim
-http.contrato.criar.inicio
-http.contrato.criar.sucesso
-contrato.criacao.inicio
-contrato.persistence.save.inicio
-contrato.persistence.save.sucesso
-contrato.evento.outbox
-contrato.evento.publicacao.inicio
-contrato.evento.publicado
-contrato.evento.publicacao.falhou
-notificacao.evento.recebido
-notificacao.evento.sucesso
-notificacao.evento.duplicado
-notificacao.evento.falha
-reputacao.evento.recebido
-reputacao.evento.sucesso
-reputacao.evento.duplicado
-reputacao.evento.falha
-auditoria.evento.recebido
-auditoria.registro.inicio
-auditoria.registro.sucesso
-auditoria.registro.duplicado
-auditoria.evento.falha
-```
-
-O `correlationId` é gerado pelo Gateway quando não enviado, encaminhado ao `contrato-service` e incluído no envelope Kafka; os consumidores o preservam em seus logs. Logs contêm identificadores técnicos e status, mas não registram o payload da mensagem, título, valor do contrato ou texto da notificação.
-
-## Infraestrutura local
-
-Os serviços de infraestrutura estão definidos em:
-
-```text
-infra/docker-compose.yml
-```
-
-Para iniciar o ambiente:
-
-```bash
-cd infra
-docker compose up -d
-```
-
-Para verificar os containers:
-
-```bash
-docker compose ps
-```
-
-Para encerrar:
-
-```bash
-docker compose down
-```
-
-Os dados do PostgreSQL são mantidos em volume Docker.
-
-Para remover também os dados persistidos:
-
-```bash
-docker compose down -v
-```
-
-## Execução das aplicações
-
-A partir da raiz do projeto, cada módulo pode ser iniciado separadamente com Maven.
-
-Eureka Server:
-
-```bash
-mvn -pl eureka-server spring-boot:run
-```
-
-API Gateway:
-
-```bash
-mvn -pl api-gateway spring-boot:run
-```
-
-Contrato Service:
-
-```bash
-mvn -pl contrato-service spring-boot:run
-```
-
-Notificação Service:
-
-```bash
-mvn -pl notificacao-service spring-boot:run
-```
-
-Reputação Service:
-
-```bash
-mvn -pl reputacao-service spring-boot:run
-```
-
-Auditoria Service:
-
-```bash
-mvn -pl auditoria-service spring-boot:run
-```
-
-## Portas
-
-| Componente | Porta |
-|---|---:|
-| API Gateway | `8080` |
-| contrato-service | `8081` |
-| notificacao-service | `8082` |
-| reputacao-service | `8083` |
-| auditoria-service | `8084` |
-| Eureka Server | `8761` |
-| Kafka | `9092` |
-| Kafka UI | `8090` |
-| PostgreSQL | `5432` |
-
-## Teste básico
-
-Com a infraestrutura e as aplicações em execução, um contrato pode ser criado pelo Gateway:
-
-```bash
-curl -i -X POST http://localhost:8080/api/contratos \
-  -H 'Content-Type: application/json' \
-  -H 'X-Correlation-Id: teste-contrato-001' \
-  -d '{
-    "clienteId": "11111111-1111-1111-1111-111111111111",
-    "freelancerId": "22222222-2222-2222-2222-222222222222",
-    "titulo": "Construção de API de pagamentos",
-    "valor": 3500.00
-  }'
-```
-
-Consulta dos contratos:
-
-```bash
-curl http://localhost:8080/api/contratos
-```
-
-Consulta de um contrato específico:
-
-```bash
-curl http://localhost:8080/api/contratos/{id}
-```
+O sampling padrão é 100%. Para alterá-lo, configure `TRACING_SAMPLING_PROBABILITY`. As URLs do Loki e Zipkin podem ser configuradas por `LOKI_URL` e `ZIPKIN_ENDPOINT`.
 
 ## Tecnologias
 
-```text
-Java 21
-Spring Boot 4.1
-Spring Cloud
-Spring Cloud Gateway
-Netflix Eureka
-Spring Data JPA
-PostgreSQL 16
-Apache Kafka 4
-Docker Compose
-Maven
-```
+Java 21, Spring Boot, Spring Cloud, Spring Data JPA, PostgreSQL, Apache Kafka, Eureka, Docker Compose, Grafana, Loki e Zipkin.

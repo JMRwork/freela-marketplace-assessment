@@ -76,19 +76,6 @@ services:
       - loki_data:/loki
     networks: [freela-net]
 
-  promtail:
-    image: grafana/promtail:3.5.0
-    container_name: freela-promtail
-    command: ["-config.file=/etc/promtail/config.yml"]
-    depends_on:
-      loki:
-        condition: service_started
-    volumes:
-      - ./promtail-config.yml:/etc/promtail/config.yml:ro
-      - promtail_positions:/var/lib/promtail
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [freela-net]
-
   grafana:
     image: grafana/grafana:12.1.1
     container_name: freela-grafana
@@ -110,7 +97,6 @@ services:
 volumes:
   postgres_data:
   loki_data:
-  promtail_positions:
   grafana_data:
 
 networks:

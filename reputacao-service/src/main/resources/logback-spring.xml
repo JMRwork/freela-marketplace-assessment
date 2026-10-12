@@ -1,0 +1,24 @@
+<configuration>
+    <springProperty scope="context" name="serviceName" source="spring.application.name" defaultValue="reputacao-service"/>
+    <property name="LOKI_URL" value="${LOKI_URL:-http://localhost:3100/loki/api/v1/push}"/>
+
+    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <http>
+            <url>${LOKI_URL}</url>
+        </http>
+        <format>
+            <label>
+                <pattern>service=${serviceName},level=%level</pattern>
+            </label>
+            <message>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level service=${serviceName} traceId=%X{traceId} spanId=%X{spanId} thread=%thread logger=%logger{36} - %msg%n%ex</pattern>
+            </message>
+        </format>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="LOKI"/>
+    </root>
+
+    <logger name="br.com.freela" level="INFO"/>
+</configuration>
